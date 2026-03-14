@@ -1733,7 +1733,7 @@ async function chubFetch(path) {
 function openBrowse() {
   document.getElementById('browse-backdrop').classList.add('open');
   if (window.innerWidth <= 600) document.getElementById('rosie-toggle').style.display = 'none';
-  document.getElementById('browse-search-input').focus();
+  if (window.innerWidth > 600) document.getElementById('browse-search-input').focus();
 }
 
 function closeBrowse() {
