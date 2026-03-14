@@ -1777,7 +1777,7 @@ async function loadBrowsePage() {
     const data     = await chubFetch(`/search?${params}`);
     const inner    = data.data || data;
     const rawNodes = inner.nodes || inner.results || [];
-    browseHasMore  = rawNodes.length >= 48;
+    browseHasMore  = rawNodes.length > 0;
     const nodes = rawNodes.filter(n => {
       const topics = (n.topics || []).map(t => t.toLowerCase());
       const nameDesc = `${n.name || ''} ${n.description || ''}`.toLowerCase();
@@ -1787,6 +1787,7 @@ async function loadBrowsePage() {
       return !blockedTag && !blockedText && !blockedDoveText && !isDeadDove(n.topics || []);
     });
     browseNodes = nodes;
+    if (rawNodes.length === 0) browseHasMore = false;
 
     renderBrowseGrid(nodes, grid);
     renderBrowsePagination();
