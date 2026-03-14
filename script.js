@@ -1495,7 +1495,7 @@ let rosieStreaming = false;
 function toggleRosie() {
   const panel = document.getElementById('rosie-panel');
   panel.classList.toggle('open');
-  if (panel.classList.contains('open')) {
+  if (panel.classList.contains('open') && window.innerWidth > 600) {
     document.getElementById('rosie-input').focus();
   }
 }
@@ -1614,7 +1614,7 @@ async function sendRosieMessage() {
 
   rosieStreaming = false;
   document.getElementById('rosie-send-btn').disabled = false;
-  document.getElementById('rosie-input').focus();
+  if (window.innerWidth > 600) document.getElementById('rosie-input').focus();
 }
 
 // ─────────────────────────────────────────────
