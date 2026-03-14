@@ -1926,7 +1926,7 @@ function hideBrowseProfile() {
 function renderBrowsePagination() {
   const el = document.getElementById('browse-pagination');
   el.innerHTML = '';
-  const totalPages = Math.max(1, Math.ceil(browseTotal / 24));
+  const totalPages = Math.max(1, Math.ceil(browseTotal / 48));
   if (totalPages <= 1) return;
 
   const prevBtn = document.createElement('button');
