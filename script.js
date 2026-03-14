@@ -11,7 +11,7 @@
 // new Date().toISOString() — then push to GitHub.
 // To disable: set MAINTENANCE back to false and push again.
 // ─────────────────────────────────────────────
-const MAINTENANCE       = false;
+const MAINTENANCE       = true;
 const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
 if (MAINTENANCE) {
