@@ -561,10 +561,9 @@
   <script src="script.js?v=16"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
-      navigator.serviceWorker.addEventListener('message', e => {
-        if (e.data?.type === 'SW_UPDATED') location.reload();
-      });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        .then(reg => reg.update());
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
     }
   </script>
 </body>

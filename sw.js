@@ -1,4 +1,4 @@
-const CACHE = 'roleplay-v4';
+const CACHE = 'roleplay-v5';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -13,7 +13,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
 
-  // Page navigation: bypass ALL caches so index.html is always fresh
+  // Page navigation: always fetch fresh, bypass all caches
   if (e.request.mode === 'navigate') {
     e.respondWith(
       fetch(new Request(e.request, { cache: 'no-store' }))
@@ -22,7 +22,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // JS / CSS / images: network first, cache as fallback
+  // Assets: network first, cache as fallback
   e.respondWith(
     fetch(e.request)
       .then(res => {
