@@ -11,7 +11,7 @@
 // new Date().toISOString() — then push to GitHub.
 // To disable: set MAINTENANCE back to false and push again.
 // ─────────────────────────────────────────────
-const MAINTENANCE       = true;
+const MAINTENANCE       = false;
 const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
 if (MAINTENANCE) {
@@ -1888,6 +1888,14 @@ async function importChubChar(fullPath, name, btn) {
     btn.disabled    = false;
     btn.textContent = 'Import';
   }
+}
+
+// Mobile keyboard — push layout above keyboard when it opens
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const keyboardHeight = window.innerHeight - window.visualViewport.height;
+    document.documentElement.style.setProperty('--keyboard-h', `${keyboardHeight}px`);
+  });
 }
 
 // Boot

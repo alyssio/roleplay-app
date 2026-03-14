@@ -866,6 +866,24 @@ input[type="range"] {
    RESPONSIVE
    ============================================================ */
 
+/* Mobile keyboard fix — shift layout above keyboard */
+:root { --keyboard-h: 0px; }
+
+@media (max-width: 600px) {
+  .input-area {
+    padding-bottom: calc(14px + var(--keyboard-h));
+    transition: padding-bottom 0.15s ease;
+  }
+  .home-toolbar {
+    margin-bottom: var(--keyboard-h);
+    transition: margin-bottom 0.15s ease;
+  }
+  .browse-modal {
+    transform: translateY(calc(-1 * var(--keyboard-h)));
+    transition: transform 0.15s ease;
+  }
+}
+
 /* Prevent iOS from zooming in on input focus */
 @media (max-width: 600px) {
   input, textarea, select { font-size: 16px !important; }
