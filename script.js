@@ -6,6 +6,36 @@
 'use strict';
 
 // ─────────────────────────────────────────────
+// MAINTENANCE MODE
+// To enable: set MAINTENANCE to true and set MAINTENANCE_SINCE to
+// new Date().toISOString() — then push to GitHub.
+// To disable: set MAINTENANCE back to false and push again.
+// ─────────────────────────────────────────────
+const MAINTENANCE       = false;
+const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
+
+if (MAINTENANCE) {
+  document.getElementById('maintenance-screen').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  const since = MAINTENANCE_SINCE ? new Date(MAINTENANCE_SINCE) : new Date();
+  const timerEl = document.getElementById('maintenance-timer');
+
+  function updateTimer() {
+    const diff = Math.floor((Date.now() - since) / 1000);
+    const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+    const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+    const s = String(diff % 60).padStart(2, '0');
+    timerEl.textContent = `${h}:${m}:${s}`;
+  }
+  updateTimer();
+  setInterval(updateTimer, 1000);
+
+  // Stop the rest of the app from loading
+  throw new Error('Maintenance mode active.');
+}
+
+// ─────────────────────────────────────────────
 // INDEXEDDB
 // ─────────────────────────────────────────────
 const DB_NAME    = 'roleplay-app';
