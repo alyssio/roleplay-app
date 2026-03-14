@@ -1337,6 +1337,7 @@ async function init() {
   // ── Chub browse ──────────────────────────────
   document.getElementById('btn-browse-chars').addEventListener('click', openBrowse);
   document.getElementById('btn-close-browse').addEventListener('click', closeBrowse);
+  document.getElementById('btn-browse-back').addEventListener('click', hideBrowseProfile);
   document.getElementById('browse-backdrop').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeBrowse();
   });
@@ -1712,6 +1713,7 @@ let browsePage    = 1;
 let browseQuery   = '';
 let browseLoading = false;
 let browseTotal   = 0;
+let browseNodes   = [];
 
 function isDeadDove(topics = []) {
   const lower = topics.map(t => t.toLowerCase());
@@ -1730,11 +1732,14 @@ async function chubFetch(path) {
 
 function openBrowse() {
   document.getElementById('browse-backdrop').classList.add('open');
+  if (window.innerWidth <= 600) document.getElementById('rosie-toggle').style.display = 'none';
   document.getElementById('browse-search-input').focus();
 }
 
 function closeBrowse() {
   document.getElementById('browse-backdrop').classList.remove('open');
+  document.getElementById('rosie-toggle').style.display = '';
+  hideBrowseProfile();
 }
 
 async function browseSearch() {
@@ -1752,12 +1757,13 @@ async function loadBrowsePage() {
   document.getElementById('browse-pagination').innerHTML = '';
 
   try {
+    const nsfwChecked = document.getElementById('browse-nsfw')?.checked ?? true;
     const params = new URLSearchParams({
       search:       browseQuery || 'yaoi',
       page:         browsePage,
       page_size:    48,
       content_type: 'characters',
-      nsfw:         'true',
+      nsfw:         nsfwChecked ? 'true' : 'false',
       sort:         'rating_count',
     });
 
@@ -1772,6 +1778,7 @@ async function loadBrowsePage() {
       return !blockedTag && !blockedText && !blockedDoveText && !isDeadDove(n.topics || []);
     });
     browseTotal = inner.count || inner.total || 0;
+    browseNodes = nodes;
 
     renderBrowseGrid(nodes, grid);
     renderBrowsePagination();
@@ -1831,11 +1838,89 @@ function renderBrowseGrid(nodes, grid) {
     importBtn.dataset.path = node.fullPath;
     importBtn.addEventListener('click', () => importChubChar(node.fullPath, node.name, importBtn));
 
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (!e.target.closest('.browse-import-btn')) showBrowseProfile(node);
+    });
+
     card.appendChild(avatarEl);
     card.appendChild(info);
     card.appendChild(importBtn);
     grid.appendChild(card);
   });
+}
+
+function showBrowseProfile(node) {
+  const profile = document.getElementById('browse-profile');
+  profile.innerHTML = '';
+
+  const avatarEl = document.createElement('div');
+  avatarEl.className = 'bprofile-avatar';
+  const img = document.createElement('img');
+  img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+  img.alt = node.name || '';
+  img.onerror = () => { avatarEl.textContent = initials(node.name); };
+  avatarEl.appendChild(img);
+  profile.appendChild(avatarEl);
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'bprofile-name';
+  nameEl.textContent = node.name || 'Unknown';
+  profile.appendChild(nameEl);
+
+  if (node.rating_count) {
+    const ratingEl = document.createElement('div');
+    ratingEl.className = 'bprofile-rating';
+    ratingEl.textContent = `${Math.round((node.rating || 0) * 10) / 10}★  ${node.rating_count.toLocaleString()} ratings`;
+    profile.appendChild(ratingEl);
+  }
+
+  if (node.tagline) {
+    const taglineEl = document.createElement('div');
+    taglineEl.className = 'bprofile-tagline';
+    taglineEl.textContent = node.tagline;
+    profile.appendChild(taglineEl);
+  }
+
+  if (node.description) {
+    const descEl = document.createElement('div');
+    descEl.className = 'bprofile-desc';
+    descEl.textContent = node.description;
+    profile.appendChild(descEl);
+  }
+
+  if (node.topics?.length) {
+    const tagsEl = document.createElement('div');
+    tagsEl.className = 'bprofile-tags';
+    node.topics.forEach(t => {
+      const pill = document.createElement('span');
+      pill.className = 'browse-tag';
+      pill.textContent = t;
+      tagsEl.appendChild(pill);
+    });
+    profile.appendChild(tagsEl);
+  }
+
+  const actionsEl = document.createElement('div');
+  actionsEl.className = 'bprofile-actions';
+  const importBtn = document.createElement('button');
+  importBtn.className = 'btn-primary';
+  importBtn.textContent = 'Import Character';
+  importBtn.addEventListener('click', () => importChubChar(node.fullPath, node.name, importBtn));
+  actionsEl.appendChild(importBtn);
+  profile.appendChild(actionsEl);
+
+  document.querySelector('.browse-modal').classList.add('browse-in-profile');
+  document.getElementById('browse-body').style.display = 'none';
+  profile.style.display = '';
+  document.getElementById('btn-browse-back').style.display = '';
+}
+
+function hideBrowseProfile() {
+  document.querySelector('.browse-modal').classList.remove('browse-in-profile');
+  document.getElementById('browse-profile').style.display = 'none';
+  document.getElementById('browse-body').style.display = '';
+  document.getElementById('btn-browse-back').style.display = 'none';
 }
 
 function renderBrowsePagination() {

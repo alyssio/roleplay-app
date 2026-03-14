@@ -1592,6 +1592,25 @@ input[type="range"] {
 .browse-filter-bar input:focus { border-color: var(--accent); }
 .browse-filter-bar .btn-primary { flex-shrink: 0; }
 
+.browse-nsfw-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+.browse-nsfw-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.browse-nsfw-label:has(input:checked) { color: var(--accent); }
+
 .browse-filter-note {
   font-size: 11.5px;
   color: var(--text-muted);
@@ -1708,6 +1727,93 @@ input[type="range"] {
   color: var(--text-muted);
   min-width: 80px;
   text-align: center;
+}
+
+/* ============================================================
+   BROWSE PROFILE VIEW
+   ============================================================ */
+.browse-header-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browse-in-profile .browse-filter-bar,
+.browse-in-profile .browse-filter-note {
+  display: none;
+}
+
+.browse-profile {
+  gap: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.bprofile-avatar {
+  width: 110px;
+  height: 110px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.bprofile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.bprofile-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.bprofile-rating {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bprofile-tagline {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.bprofile-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-height: 180px;
+  overflow-y: auto;
+  text-align: left;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+}
+
+.bprofile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+}
+
+.bprofile-actions {
+  padding-top: 4px;
 }
 
 /* ============================================================
