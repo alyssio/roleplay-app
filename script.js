@@ -418,6 +418,7 @@ function openCharModal(charId = null) {
     document.getElementById('char-name').value         = char.name;
     document.getElementById('char-personality').value  = char.personality;
     document.getElementById('char-opening').value      = char.openingMessage || '';
+    document.getElementById('char-spotify').value      = char.spotifyUrl || '';
     charAvatarData = char.avatar || null;
   } else {
     title.textContent = 'New Character';
@@ -426,6 +427,7 @@ function openCharModal(charId = null) {
     document.getElementById('char-name').value         = '';
     document.getElementById('char-personality').value  = '';
     document.getElementById('char-opening').value      = '';
+    document.getElementById('char-spotify').value      = '';
     charAvatarData = null;
   }
 
@@ -451,12 +453,14 @@ async function saveCharacter() {
 
   const isNew = !editingCharId;
 
+  const spotifyUrl = document.getElementById('char-spotify').value.trim();
   const char = {
     id:             editingCharId || generateId(),
     name,
     avatar:         charAvatarData,
     personality,
     openingMessage: openingMsg,
+    spotifyUrl:     spotifyUrl || null,
   };
 
   await dbPut('characters', char);
@@ -637,6 +641,40 @@ async function openChat(charId, usePersona = true) {
   renderMessages();
   scrollToBottom(false);
   document.getElementById('message-input').focus();
+  setupMusicPlayer(currentChar.spotifyUrl);
+}
+
+function toSpotifyEmbed(url) {
+  try {
+    const u = new URL(url);
+    // e.g. /track/ID or /playlist/ID
+    const path = u.pathname.replace(/^\//, '');
+    return `https://open.spotify.com/embed/${path}?utm_source=oembed`;
+  } catch { return null; }
+}
+
+function setupMusicPlayer(spotifyUrl) {
+  const btn    = document.getElementById('btn-music');
+  const player = document.getElementById('music-player');
+  const iframe = document.getElementById('spotify-iframe');
+
+  // Reset
+  player.style.display = 'none';
+  btn.style.display    = 'none';
+  iframe.src           = '';
+
+  if (!spotifyUrl) return;
+
+  const embedUrl = toSpotifyEmbed(spotifyUrl);
+  if (!embedUrl) return;
+
+  iframe.src        = embedUrl;
+  btn.style.display = '';
+}
+
+function toggleMusicPlayer() {
+  const player = document.getElementById('music-player');
+  player.style.display = player.style.display === 'none' ? '' : 'none';
 }
 
 function updateChatHeader() {
@@ -1294,6 +1332,7 @@ async function init() {
     currentChat = null;
   });
 
+  document.getElementById('btn-music').addEventListener('click', toggleMusicPlayer);
   document.getElementById('btn-edit-character').addEventListener('click', () => {
     if (currentChar) openCharModal(currentChar.id);
   });
@@ -1972,11 +2011,31 @@ async function importChubChar(fullPath, name, btn) {
     const personality= cardData.description || node.description || '';
     const openingMsg = cardData.first_mes   || node.first_mes   || '';
 
+    // Fetch avatar and convert to base64
+    let avatarB64 = null;
+    try {
+      const avatarUrl = `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png`;
+      const imgRes = await fetch(`${CHUB_PROXY}${encodeURIComponent(avatarUrl)}`);
+      if (imgRes.ok) {
+        const blob = await imgRes.blob();
+        avatarB64 = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch (_) {}
+
     closeBrowse();
     openCharModal();
     document.getElementById('char-name').value        = charName;
     document.getElementById('char-personality').value = personality;
     document.getElementById('char-opening').value     = openingMsg;
+
+    if (avatarB64) {
+      charAvatarData = avatarB64;
+      renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, charName);
+    }
 
     toast(`Imported "${charName}" — review and save! 🌸`, 'success');
   } catch (err) {

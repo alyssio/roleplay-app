@@ -349,6 +349,20 @@ html, body {
   background-position: center;
 }
 
+/* ---- music player ---- */
+#music-player {
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+#spotify-iframe {
+  width: 100%;
+  height: 80px;
+  border: none;
+  display: block;
+}
+
 /* ---- messages ---- */
 .messages-container {
   flex: 1;

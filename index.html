@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 
@@ -105,6 +105,12 @@
         <span class="chat-header-name" id="chat-header-name"></span>
       </div>
       <div class="chat-header-actions">
+        <button class="icon-btn" id="btn-music" title="Music player" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+        </button>
         <button class="icon-btn" id="btn-edit-character" title="Edit character">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -121,6 +127,10 @@
         </button>
       </div>
     </header>
+
+    <div id="music-player" style="display:none">
+      <iframe id="spotify-iframe" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+    </div>
 
     <div class="messages-container" id="messages-container">
       <!-- messages injected here -->
@@ -291,6 +301,10 @@
         <div class="form-group">
           <label for="char-opening">Opening Message</label>
           <textarea id="char-opening" rows="3" placeholder="First message the character sends when a new chat begins (optional)."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="char-spotify">Spotify Link <span style="font-weight:400;color:var(--text-muted)">(optional — plays in chat)</span></label>
+          <input type="url" id="char-spotify" placeholder="https://open.spotify.com/track/… or playlist/…" autocomplete="off" />
         </div>
       </div>
       <div class="modal-footer">
@@ -558,7 +572,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=19"></script>
+  <script src="script.js?v=21"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
