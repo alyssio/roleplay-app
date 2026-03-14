@@ -14,7 +14,9 @@
 const MAINTENANCE       = false;
 const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
-if (MAINTENANCE) {
+const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+
+if (MAINTENANCE && isLocal) {
   document.getElementById('maintenance-screen').style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
@@ -286,6 +288,7 @@ function populateSettingsForm() {
   document.getElementById('chat-bg-opacity').value = chatBgOpacity;
   document.getElementById('chat-bg-opacity-display').textContent = chatBgOpacity.toFixed(2);
   updateChatBgThumb();
+  applyChatBg();
 }
 
 async function saveSettings({ silent = false, close = false } = {}) {
