@@ -1345,6 +1345,9 @@ async function init() {
   document.getElementById('browse-search-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') browseSearch();
   });
+  document.getElementById('browse-search-input').addEventListener('focus', () => {
+    if (window.innerWidth <= 600) requestAnimationFrame(() => window.scrollTo(0, 0));
+  });
 }
 
 // ─────────────────────────────────────────────
