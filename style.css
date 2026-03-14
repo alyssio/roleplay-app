@@ -90,7 +90,11 @@ html, body {
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface);
   flex-shrink: 0;
+  overflow: visible;
 }
+
+.home-header-left { flex: 1; min-width: 0; }
+.home-header-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 .app-title {
   font-size: 1.3rem;
