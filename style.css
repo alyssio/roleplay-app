@@ -942,7 +942,7 @@ input[type="range"] {
     align-items: flex-end;
   }
   .browse-modal {
-    max-height: 92dvh;
+    height: 92dvh;
     width: 100vw;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }

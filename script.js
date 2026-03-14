@@ -1712,7 +1712,7 @@ const DEAD_DOVE_TAGS    = ['dead dove', 'dead-dove', 'noncon', 'non-con', 'rape'
 let browsePage    = 1;
 let browseQuery   = '';
 let browseLoading = false;
-let browseTotal   = 0;
+let browseHasMore = false;
 let browseNodes   = [];
 
 function isDeadDove(topics = []) {
@@ -1759,17 +1759,19 @@ async function loadBrowsePage() {
   try {
     const nsfwChecked = document.getElementById('browse-nsfw')?.checked ?? true;
     const params = new URLSearchParams({
-      search:       browseQuery || 'yaoi',
       page:         browsePage,
-      page_size:    24,
+      page_size:    48,
       content_type: 'characters',
       nsfw:         nsfwChecked ? 'true' : 'false',
       sort:         'rating_count',
     });
+    if (browseQuery) params.set('search', browseQuery);
 
-    const data  = await chubFetch(`/search?${params}`);
-    const inner = data.data || data;
-    const nodes = (inner.nodes || inner.results || []).filter(n => {
+    const data     = await chubFetch(`/search?${params}`);
+    const inner    = data.data || data;
+    const rawNodes = inner.nodes || inner.results || [];
+    browseHasMore  = rawNodes.length >= 48;
+    const nodes = rawNodes.filter(n => {
       const topics = (n.topics || []).map(t => t.toLowerCase());
       const nameDesc = `${n.name || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
@@ -1777,7 +1779,6 @@ async function loadBrowsePage() {
       const blockedDoveText = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
       return !blockedTag && !blockedText && !blockedDoveText && !isDeadDove(n.topics || []);
     });
-    browseTotal = inner.count || inner.total || 0;
     browseNodes = nodes;
 
     renderBrowseGrid(nodes, grid);
@@ -1926,8 +1927,7 @@ function hideBrowseProfile() {
 function renderBrowsePagination() {
   const el = document.getElementById('browse-pagination');
   el.innerHTML = '';
-  const totalPages = Math.max(1, Math.ceil(browseTotal / 24));
-  if (totalPages <= 1) return;
+  if (browsePage <= 1 && !browseHasMore) return;
 
   const prevBtn = document.createElement('button');
   prevBtn.className = 'btn-secondary';
@@ -1937,13 +1937,13 @@ function renderBrowsePagination() {
 
   const info = document.createElement('span');
   info.className = 'browse-page-info';
-  info.textContent = `${browsePage} / ${totalPages}`;
+  info.textContent = `Page ${browsePage}`;
 
   const nextBtn = document.createElement('button');
   nextBtn.className = 'btn-secondary';
   nextBtn.textContent = 'Next →';
-  nextBtn.disabled = browsePage >= totalPages;
-  nextBtn.addEventListener('click', async () => { if (browsePage < totalPages) { browsePage++; await loadBrowsePage(); } });
+  nextBtn.disabled = !browseHasMore;
+  nextBtn.addEventListener('click', async () => { if (browseHasMore) { browsePage++; await loadBrowsePage(); } });
 
   el.appendChild(prevBtn);
   el.appendChild(info);
