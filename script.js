@@ -1761,7 +1761,7 @@ async function loadBrowsePage() {
     const params = new URLSearchParams({
       search:       browseQuery || 'yaoi',
       page:         browsePage,
-      page_size:    48,
+      page_size:    24,
       content_type: 'characters',
       nsfw:         nsfwChecked ? 'true' : 'false',
       sort:         'rating_count',
@@ -1926,7 +1926,7 @@ function hideBrowseProfile() {
 function renderBrowsePagination() {
   const el = document.getElementById('browse-pagination');
   el.innerHTML = '';
-  const totalPages = Math.max(1, Math.ceil(browseTotal / 48));
+  const totalPages = Math.max(1, Math.ceil(browseTotal / 24));
   if (totalPages <= 1) return;
 
   const prevBtn = document.createElement('button');

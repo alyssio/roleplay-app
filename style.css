@@ -936,8 +936,8 @@ input[type="range"] {
   .send-btn { width: 46px; height: 46px; }
 
   /* ---- modals ---- */
-  .modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
-  .modal-backdrop {
+  /* browse modal stays as bottom sheet */
+  #browse-backdrop {
     padding: 0;
     align-items: flex-end;
   }
@@ -946,9 +946,27 @@ input[type="range"] {
     width: 100vw;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
+  /* char creation / other modals: centered with padding */
+  #char-modal-backdrop {
+    padding: 16px;
+    align-items: center;
+  }
+  #char-modal-backdrop .modal {
+    border-radius: var(--radius-xl);
+    max-height: 88dvh;
+  }
 
   /* ---- settings panel ---- */
   .settings-panel { width: 100vw; }
+
+  /* ---- Rosie panel: centered on mobile ---- */
+  #rosie-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    bottom: 90px;
+  }
 
   /* ---- safe area insets for notch / home bar ---- */
   .input-area { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
@@ -1719,9 +1737,11 @@ input[type="range"] {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding-top: 4px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
+.browse-pagination:empty { display: none; }
 .browse-page-info {
   font-size: 12.5px;
   color: var(--text-muted);
