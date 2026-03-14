@@ -284,9 +284,9 @@ function populateSettingsForm() {
   const prev = document.getElementById('user-avatar-preview');
   renderAvatarPreview(prev, settings.persona?.avatar, settings.persona?.name);
 
-  const chatBgOpacity = settings.chatBg?.opacity ?? 0.30;
-  document.getElementById('chat-bg-opacity').value = chatBgOpacity;
-  document.getElementById('chat-bg-opacity-display').textContent = chatBgOpacity.toFixed(2);
+  const chatBgBlur = settings.chatBg?.blur ?? 4;
+  document.getElementById('chat-bg-blur').value = chatBgBlur;
+  document.getElementById('chat-bg-blur-display').textContent = `${chatBgBlur}px`;
   updateChatBgThumb();
   applyChatBg();
 }
@@ -588,10 +588,12 @@ function applyChatBg() {
   const bg = settings.chatBg;
   if (bg?.data) {
     layer.style.backgroundImage = `url(${bg.data})`;
-    layer.style.opacity = bg.opacity ?? 0.30;
+    layer.style.opacity = '1';
+    layer.style.filter = `blur(${bg.blur ?? 4}px)`;
   } else {
     layer.style.backgroundImage = '';
     layer.style.opacity = '0';
+    layer.style.filter = '';
   }
 }
 
@@ -1131,11 +1133,11 @@ async function init() {
     applyChatBg();
     scheduleAutoSave();
   });
-  document.getElementById('chat-bg-opacity').addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    document.getElementById('chat-bg-opacity-display').textContent = val.toFixed(2);
+  document.getElementById('chat-bg-blur').addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById('chat-bg-blur-display').textContent = `${val}px`;
     if (!settings.chatBg) settings.chatBg = {};
-    settings.chatBg.opacity = val;
+    settings.chatBg.blur = val;
     applyChatBg();
     scheduleAutoSave();
   });
@@ -1689,7 +1691,9 @@ async function handleVibePick(type) {
 // ─────────────────────────────────────────────
 // CHUB.AI BROWSE
 // ─────────────────────────────────────────────
-const CHUB_PROXY        = 'https://corsproxy.io/?';
+const CHUB_PROXY        = isLocal
+  ? 'https://corsproxy.io/?'
+  : 'https://chub-proxy.alyssa-a85.workers.dev/?url=';
 const CHUB_API          = 'https://api.chub.ai';
 const CHUB_BLOCK_TOPICS = [
   'female', 'lesbian', 'yuri', 'femslash', 'wlw', 'girl', 'girls',
@@ -1715,11 +1719,7 @@ function isDeadDove(topics = []) {
 }
 
 async function chubFetch(path) {
-  // Encode only the query string so corsproxy.io doesn't treat & as its own params
-  const [basePath, qs] = path.split('?');
-  const proxyUrl = qs
-    ? `${CHUB_PROXY}${CHUB_API}${basePath}${encodeURIComponent('?' + qs)}`
-    : `${CHUB_PROXY}${CHUB_API}${basePath}`;
+  const proxyUrl = `${CHUB_PROXY}${encodeURIComponent(CHUB_API + path)}`;
   const res = await fetch(proxyUrl);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
