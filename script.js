@@ -1345,9 +1345,6 @@ async function init() {
   document.getElementById('browse-search-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') browseSearch();
   });
-  document.getElementById('browse-search-input').addEventListener('focus', () => {
-    if (window.innerWidth <= 600) requestAnimationFrame(() => window.scrollTo(0, 0));
-  });
 }
 
 // ─────────────────────────────────────────────
@@ -1735,13 +1732,20 @@ async function chubFetch(path) {
 
 function openBrowse() {
   document.getElementById('browse-backdrop').classList.add('open');
-  if (window.innerWidth <= 600) document.getElementById('rosie-toggle').style.display = 'none';
-  if (window.innerWidth > 600) document.getElementById('browse-search-input').focus();
+  if (window.innerWidth <= 600) {
+    document.getElementById('rosie-toggle').style.display = 'none';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+  } else {
+    document.getElementById('browse-search-input').focus();
+  }
 }
 
 function closeBrowse() {
   document.getElementById('browse-backdrop').classList.remove('open');
   document.getElementById('rosie-toggle').style.display = '';
+  document.body.style.position = '';
+  document.body.style.width = '';
   hideBrowseProfile();
 }
 
