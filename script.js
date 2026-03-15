@@ -841,8 +841,8 @@ function updateChatHeader() {
 
 function showAvatarOverlay(src, name) {
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
-  ov.innerHTML = `<img src="${src}" alt="${escapeHtml(name)}" style="max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,0.6);" />`;
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+  ov.innerHTML = `<img src="${src}" alt="${escapeHtml(name)}" style="width:260px;height:260px;border-radius:16px;object-fit:cover;box-shadow:0 8px 40px rgba(0,0,0,0.6);" />`;
   ov.addEventListener('click', () => ov.remove());
   document.body.appendChild(ov);
 }
