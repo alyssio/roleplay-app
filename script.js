@@ -2720,7 +2720,6 @@ async function importCaiChar(_id, name, avatarUrl, description, btn) {
     document.getElementById('char-name').value        = name || '';
     document.getElementById('char-personality').value = description || '';
     document.getElementById('char-opening').value     = '';
-    document.getElementById('char-opening').placeholder = 'C.AI import — add an opening message manually.';
     document.getElementById('chub-source-link').style.display = 'none';
     if (avatarB64) {
       charAvatarData = avatarB64;
