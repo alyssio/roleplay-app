@@ -2024,7 +2024,17 @@ function _mapJaiChar(c) {
   return {
     fullPath:   `jai:${c.id}`,
     name:       c.name || 'Unknown',
-    tagline:    (() => { const d = document.createElement('div'); d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' '); return d.textContent.replace(/\s+/g, ' ').trim().slice(0, 300); })(),
+    tagline:    (() => {
+      const d = document.createElement('div');
+      d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' ');
+      let txt = d.textContent.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim();
+      if (txt.length > 300) {
+        const cut = txt.slice(0, 300);
+        const last = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'));
+        txt = last > 100 ? txt.slice(0, last + 1) : cut.trimEnd() + '…';
+      }
+      return txt;
+    })(),
     topics:     [],
     _jai:       true,
     _jaiAvatar: `https://ella.janitorai.com/bot-avatars/${c.avatar}`,
