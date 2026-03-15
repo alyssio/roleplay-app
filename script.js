@@ -883,6 +883,8 @@ function createMessageEl(msg, index) {
   } else {
     if (currentChar?.avatar) {
       avatar.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
+      avatar.style.cursor = 'pointer';
+      avatar.addEventListener('click', () => showAvatarOverlay(currentChar.avatar, currentChar.name));
     } else {
       avatar.textContent = initials(currentChar?.name || '?');
     }
