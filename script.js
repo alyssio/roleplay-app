@@ -2258,7 +2258,10 @@ function showBrowseProfile(node) {
   const importBtn = document.createElement('button');
   importBtn.className = 'btn-primary';
   importBtn.textContent = 'Import Character';
-  importBtn.addEventListener('click', () => importChubChar(node.fullPath, node.name, importBtn));
+  importBtn.addEventListener('click', () => {
+    if (node._jai) importJaiChar(node._jaiId, node.name, node._jaiAvatar, node.tagline, importBtn);
+    else importChubChar(node.fullPath, node.name, importBtn);
+  });
   actionsEl.appendChild(importBtn);
   profile.appendChild(actionsEl);
 
@@ -2531,7 +2534,7 @@ function renderDiscoverGrid(nodes, grid) {
     card.appendChild(body);
 
     card.addEventListener('click', (e) => {
-      if (!e.target.closest('.discover-import-btn')) {
+      if (!e.target.closest('.discover-import-btn') && !node._jai) {
         openBrowse();
         showBrowseProfile(node);
       }
