@@ -2385,7 +2385,15 @@ function renderDiscoverPagination() {
   info.textContent = `Page ${dailyPage}`;
   info.title = 'Click to jump to a page';
   info.style.cursor = 'pointer';
-  info.addEventListener('click', () => {
+  info.addEventListener('click', async () => {
+    if (mobileQuery.matches) {
+      // Native prompt avoids keyboard layout shift on mobile
+      const raw = window.prompt('Jump to page:', dailyPage);
+      if (raw === null) return;
+      const val = parseInt(raw);
+      if (val >= 1) { dailyPage = val; await loadDailyDiscovery(); }
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'number';
     input.min = '1';
