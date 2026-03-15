@@ -1568,7 +1568,7 @@ async function init() {
         document.querySelectorAll(`.discover-card[data-path="${path}"]`).forEach(el => el.remove());
       });
     } catch { /* silent */ }
-  }, 15000);
+  }, 5000);
 
   // Re-load discover if screen crosses the mobile/PC boundary (e.g. browser resize, DevTools)
   mobileQuery.addEventListener('change', () => {
