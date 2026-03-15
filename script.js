@@ -2024,7 +2024,7 @@ function _mapJaiChar(c) {
   return {
     fullPath:   `jai:${c.id}`,
     name:       c.name || 'Unknown',
-    tagline:    (c.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300),
+    tagline:    (() => { const d = document.createElement('div'); d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' '); return d.textContent.replace(/\s+/g, ' ').trim().slice(0, 300); })(),
     topics:     [],
     _jai:       true,
     _jaiAvatar: `https://ella.janitorai.com/bot-avatars/${c.avatar}`,
