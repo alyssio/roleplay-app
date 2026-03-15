@@ -1908,6 +1908,8 @@ async function handleVibePick(type) {
 const CHUB_PROXY        = isLocal
   ? 'https://corsproxy.io/?'
   : 'https://chub-proxy.alyssa-a85.workers.dev/?url=';
+const WORKER_BASE       = isLocal ? null : 'https://chub-proxy.alyssa-a85.workers.dev';
+const KV_TOKEN          = 'REPLACE_ME'; // must match KV_SECRET in your Worker env vars
 const CHUB_API          = 'https://api.chub.ai';
 const CHUB_REQUIRE_TOPICS = [
   'male', 'yaoi', 'gay', 'bl', 'boys love', "boys' love", 'mlm',
@@ -2212,9 +2214,39 @@ function renderBrowsePagination() {
 
 // ─── DAILY DISCOVERY (PC home screen) ────────────────────────────────────────
 
-function getHiddenBots() {
+async function getHiddenBots() {
+  // Try KV first (syncs across devices), fall back to localStorage
+  if (WORKER_BASE && KV_TOKEN !== 'REPLACE_ME') {
+    try {
+      const res = await fetch(`${WORKER_BASE}?kv=hidden`, {
+        headers: { 'X-KV-Token': KV_TOKEN },
+      });
+      if (res.ok) {
+        const kvList = await res.json();
+        // Merge with localStorage in case there are local-only entries
+        const local = JSON.parse(localStorage.getItem('hidden-discover') || '[]');
+        const merged = new Set([...kvList, ...local]);
+        localStorage.setItem('hidden-discover', JSON.stringify([...merged]));
+        return merged;
+      }
+    } catch (_) {}
+  }
   try { return new Set(JSON.parse(localStorage.getItem('hidden-discover') || '[]')); }
   catch { return new Set(); }
+}
+
+async function saveHiddenBots(hiddenSet) {
+  const arr = [...hiddenSet];
+  localStorage.setItem('hidden-discover', JSON.stringify(arr));
+  if (WORKER_BASE && KV_TOKEN !== 'REPLACE_ME') {
+    try {
+      await fetch(`${WORKER_BASE}?kv=hidden`, {
+        method:  'POST',
+        headers: { 'X-KV-Token': KV_TOKEN, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(arr),
+      });
+    } catch (_) {}
+  }
 }
 
 function loadDiscoverState() {
@@ -2235,12 +2267,12 @@ function saveDiscoverState() {
   localStorage.setItem('discover-state', JSON.stringify({ date: today, page: dailyPage }));
 }
 
-function hideDiscoverBot(fullPath, cardEl) {
-  const hidden = getHiddenBots();
-  hidden.add(fullPath);
-  localStorage.setItem('hidden-discover', JSON.stringify([...hidden]));
+async function hideDiscoverBot(fullPath, cardEl) {
   cardEl.classList.add('discover-card-hiding');
   cardEl.addEventListener('animationend', () => cardEl.remove());
+  const hidden = await getHiddenBots();
+  hidden.add(fullPath);
+  await saveHiddenBots(hidden);
 }
 
 async function loadDailyDiscovery() {
