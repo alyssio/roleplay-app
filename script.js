@@ -2215,6 +2215,7 @@ function renderBrowsePagination() {
 // ─── DAILY DISCOVERY (PC home screen) ────────────────────────────────────────
 
 async function getHiddenBots() {
+  console.log('[KV] getHiddenBots called, WORKER_BASE:', WORKER_BASE, 'token ok:', KV_TOKEN !== 'REPLACE_ME');
   // Try KV first (syncs across devices), fall back to localStorage
   if (WORKER_BASE && KV_TOKEN !== 'REPLACE_ME') {
     try {
