@@ -2736,7 +2736,10 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     let avatarB64 = null;
     if (avatarUrl) {
       try {
-        const resp = await fetch(avatarUrl);
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const resp = await fetch(avatarUrl, { signal: ctrl.signal });
+        clearTimeout(t);
         const blob = await resp.blob();
         avatarB64 = await new Promise(r => {
           const fr = new FileReader();
