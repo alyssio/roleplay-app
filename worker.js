@@ -20,23 +20,33 @@ export default {
     // ── KV endpoints (?kv=hidden) ─────────────────────────────
     const kvAction = url.searchParams.get('kv');
     if (kvAction === 'hidden') {
-      // Token check
-      const token = request.headers.get('X-KV-Token');
-      if (!env.KV_SECRET || token !== env.KV_SECRET) {
-        return new Response('Unauthorized', { status: 401, headers: cors });
-      }
+      try {
+        // Token check
+        const token = request.headers.get('X-KV-Token');
+        if (!env.KV_SECRET || token !== env.KV_SECRET) {
+          return new Response('Unauthorized', { status: 401, headers: cors });
+        }
 
-      if (request.method === 'GET') {
-        const value = await env.ROLEPLAY_KV.get('hidden-bots', { cacheTtl: 0 });
-        return new Response(value || '[]', {
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        });
-      }
+        if (!env.ROLEPLAY_KV) {
+          return new Response('KV not bound', { status: 503, headers: cors });
+        }
 
-      if (request.method === 'POST') {
-        const body = await request.text();
-        await env.ROLEPLAY_KV.put('hidden-bots', body);
+        if (request.method === 'GET') {
+          const value = await env.ROLEPLAY_KV.get('hidden-bots');
+          return new Response(value || '[]', {
+            headers: { ...cors, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (request.method === 'POST') {
+          const body = await request.text();
+          await env.ROLEPLAY_KV.put('hidden-bots', body);
+          return new Response('ok', { headers: cors });
+        }
+
         return new Response('ok', { headers: cors });
+      } catch (err) {
+        return new Response('KV error: ' + err.message, { status: 500, headers: cors });
       }
     }
 
