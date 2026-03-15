@@ -2360,13 +2360,14 @@ async function loadDailyDiscovery() {
     // Normalize C.AI characters to same shape as Chub nodes
     const caiNodes = caiData.status === 'fulfilled'
       ? (caiData.value.characters || []).map(c => ({
-          fullPath:   `cai:${c.id}`,
-          name:       c.name,
-          tagline:    c.description,
-          topics:     [],
-          _cai:       true,
-          _caiAvatar: c.avatar,
-          _caiId:     c.id,
+          fullPath:    `cai:${c.id}`,
+          name:        c.name,
+          tagline:     c.description,
+          topics:      [],
+          _cai:        true,
+          _caiAvatar:  c.avatar,
+          _caiId:      c.id,
+          _caiGreeting: c.greeting || '',
         }))
       : [];
 
@@ -2485,7 +2486,7 @@ function renderDiscoverGrid(nodes, grid) {
     importBtn.textContent = 'Import';
     importBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (node._cai) importCaiChar(node._caiId, node.name, node._caiAvatar, node.tagline, importBtn);
+      if (node._cai) importCaiChar(node._caiId, node.name, node._caiAvatar, node.tagline, node._caiGreeting || '', importBtn);
       else importChubChar(node.fullPath, node.name, importBtn);
     });
     body.appendChild(importBtn);
@@ -2698,19 +2699,14 @@ async function importChubChar(fullPath, name, btn) {
   }
 }
 
-async function importCaiChar(id, name, avatarUrl, description, btn) {
+async function importCaiChar(_id, name, avatarUrl, description, knownGreeting, btn) {
   btn.disabled    = true;
   btn.textContent = '…';
   try {
-    // Fetch full character details for greeting/opening message
-    let greeting = '';
-    let fullAvatarUrl = avatarUrl;
-    try {
-      const detail = await fetch(`${CAI_SERVER}/character/${id}`).then(r => r.json());
-      if (detail.greeting) greeting = detail.greeting;
-      if (detail.avatar)   fullAvatarUrl = detail.avatar;
-      if (detail.description && !description) description = detail.description;
-    } catch { /* fall through with what we have */ }
+    let greeting = knownGreeting || '';
+    let fullAvatarUrl = avatarUrl
+      ? `${CAI_SERVER}/avatar?url=${encodeURIComponent(avatarUrl)}`
+      : null;
 
     let avatarB64 = null;
     if (fullAvatarUrl) {
