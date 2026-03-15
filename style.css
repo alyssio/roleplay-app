@@ -259,13 +259,15 @@ html, body {
   position: absolute;
   top: 8px;
   left: 8px;
-  background: var(--accent);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: var(--radius-full);
+  background: var(--accent);
 }
+.discover-source-badge--jai  { background: #7c3aed; }
+.discover-source-badge--mlm  { background: #0ea5e9; left: auto; right: 8px; }
 .discover-card-rating {
   position: absolute;
   top: 8px;

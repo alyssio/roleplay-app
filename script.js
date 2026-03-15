@@ -2348,26 +2348,26 @@ async function loadDailyDiscovery() {
       sort:         'rating_count',
     });
 
-    const [chubData, caiData] = await Promise.allSettled([
+    const [chubData, jaiData] = await Promise.allSettled([
       chubFetch(`/search?${params}`),
-      fetch(`${CAI_SERVER}/discover`).then(r => r.json()),
+      fetch(`${CAI_SERVER}/jai/discover`).then(r => r.json()),
     ]);
 
     const inner    = chubData.status === 'fulfilled' ? (chubData.value.data || chubData.value) : {};
     const rawNodes = inner.nodes || inner.results || [];
     dailyHasMore   = rawNodes.length > 0;
 
-    // Normalize C.AI characters to same shape as Chub nodes
-    const caiNodes = caiData.status === 'fulfilled'
-      ? (caiData.value.characters || []).map(c => ({
-          fullPath:    `cai:${c.id}`,
-          name:        c.name,
-          tagline:     c.description,
-          topics:      [],
-          _cai:        true,
-          _caiAvatar:  c.avatar,
-          _caiId:      c.id,
-          _caiGreeting: c.greeting || '',
+    // Normalize J.AI characters to same shape as Chub nodes
+    const jaiNodes = jaiData.status === 'fulfilled'
+      ? (jaiData.value.characters || []).map(c => ({
+          fullPath:   `jai:${c.id}`,
+          name:       c.name,
+          tagline:    c.description,
+          topics:     [],
+          _jai:       true,
+          _jaiAvatar: c.avatar,
+          _jaiId:     c.id,
+          _jaiMlm:    c.mlm || false,
         }))
       : [];
 
@@ -2384,13 +2384,13 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Interleave up to 6 C.AI cards per page, rotating which ones show per page
+    // Interleave up to 6 J.AI cards per page, rotating which ones show per page
     const allNodes = [...rawNodes.filter(filterNode)];
-    const filteredCai = caiNodes.filter(filterNode);
-    if (filteredCai.length) {
-      const offset = ((dailyPage - 1) * 6) % filteredCai.length;
-      const caiSlice = filteredCai.slice(offset, offset + 6);
-      caiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
+    const filteredJai = jaiNodes.filter(filterNode);
+    if (filteredJai.length) {
+      const offset = ((dailyPage - 1) * 6) % filteredJai.length;
+      const jaiSlice = filteredJai.slice(offset, offset + 6);
+      jaiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
 
@@ -2421,10 +2421,8 @@ function renderDiscoverGrid(nodes, grid) {
 
     const img = document.createElement('img');
     img.alt = node.name || '';
-    if (node._cai) {
-      img.src = node._caiAvatar
-        ? `${CAI_SERVER}/avatar?url=${encodeURIComponent(node._caiAvatar)}`
-        : '';
+    if (node._jai) {
+      img.src = node._jaiAvatar || '';
     } else {
       img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
     }
@@ -2474,11 +2472,17 @@ function renderDiscoverGrid(nodes, grid) {
       body.appendChild(tagsEl);
     }
 
-    if (node._cai) {
+    if (node._jai) {
       const badge = document.createElement('span');
-      badge.className = 'discover-source-badge';
-      badge.textContent = 'C.AI';
+      badge.className = 'discover-source-badge discover-source-badge--jai';
+      badge.textContent = 'J.AI';
       imgWrap.appendChild(badge);
+      if (node._jaiMlm) {
+        const mlmBadge = document.createElement('span');
+        mlmBadge.className = 'discover-source-badge discover-source-badge--mlm';
+        mlmBadge.textContent = 'MLM';
+        imgWrap.appendChild(mlmBadge);
+      }
     }
 
     const importBtn = document.createElement('button');
@@ -2486,7 +2490,7 @@ function renderDiscoverGrid(nodes, grid) {
     importBtn.textContent = 'Import';
     importBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (node._cai) importCaiChar(node._caiId, node.name, node._caiAvatar, node.tagline, node._caiGreeting || '', importBtn);
+      if (node._jai) importJaiChar(node._jaiId, node.name, node._jaiAvatar, node.tagline, importBtn);
       else importChubChar(node.fullPath, node.name, importBtn);
     });
     body.appendChild(importBtn);
@@ -2699,17 +2703,12 @@ async function importChubChar(fullPath, name, btn) {
   }
 }
 
-async function importCaiChar(_id, name, avatarUrl, description, knownGreeting, btn) {
+async function importJaiChar(_id, name, avatarUrl, description, btn) {
   btn.disabled    = true;
   btn.textContent = '…';
   try {
-    let greeting = knownGreeting || '';
-    let fullAvatarUrl = avatarUrl
-      ? `${CAI_SERVER}/avatar?url=${encodeURIComponent(avatarUrl)}`
-      : null;
-
     let avatarB64 = null;
-    if (fullAvatarUrl) {
+    if (avatarUrl) {
       avatarB64 = await new Promise(resolve => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -2723,7 +2722,7 @@ async function importCaiChar(_id, name, avatarUrl, description, knownGreeting, b
           } catch { resolve(null); }
         };
         img.onerror = () => resolve(null);
-        img.src = fullAvatarUrl;
+        img.src = avatarUrl;
       });
     }
 
@@ -2731,13 +2730,13 @@ async function importCaiChar(_id, name, avatarUrl, description, knownGreeting, b
     openCharModal();
     document.getElementById('char-name').value        = name || '';
     document.getElementById('char-personality').value = description || '';
-    document.getElementById('char-opening').value     = greeting;
+    document.getElementById('char-opening').value     = '';
     document.getElementById('chub-source-link').style.display = 'none';
     if (avatarB64) {
       charAvatarData = avatarB64;
       renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, name);
     }
-    toast(`Imported "${name}" from C.AI — review and save! 🌸`, 'success');
+    toast(`Imported "${name}" from J.AI — review and save! 🌸`, 'success');
   } catch (err) {
     toast('Import failed: ' + err.message, 'error');
     btn.disabled    = false;
