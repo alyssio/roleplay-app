@@ -335,6 +335,9 @@ html, body {
   pointer-events: none;
 }
 
+@media (max-width: 600px) {
+  #daily-discovery { display: none; }
+}
 
 .character-card {
   background: var(--bg-surface);
@@ -1119,16 +1122,6 @@ input[type="range"] {
     padding: 12px;
     gap: 10px;
   }
-
-  /* ---- discover section (mobile: 2×2 grid) ---- */
-  #daily-discovery { padding: 10px 12px 20px; }
-  .discover-title  { font-size: 1rem; }
-  .discover-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .discover-card-tagline,
-  .discover-card-tags { display: none; }
-  .discover-card-name { font-size: 0.78rem; }
-  .discover-import-btn,
-  .discover-hide-btn  { font-size: 0.72rem; padding: 3px 7px; }
 
   /* ---- chat ---- */
   .message-row { max-width: 92%; }

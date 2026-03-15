@@ -138,6 +138,37 @@ function initials(name) {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
 
+// Replace {{char}} / {{user}} placeholders with actual names
+function fillPlaceholders(text) {
+  if (!text) return text;
+  const charName = currentChar?.name || 'Character';
+  const userName = settings.persona?.name || 'User';
+  return text
+    .replace(/\{\{char\}\}/gi, charName)
+    .replace(/\{\{user\}\}/gi, userName);
+}
+
+// Render message text into an element, embedding any image URLs as <img> tags
+function renderMessageContent(text, el) {
+  el.innerHTML = '';
+  const filled = fillPlaceholders(text) || '';
+  // Match markdown images ![alt](url) OR bare image URLs
+  const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:[?#]\S*)?/gi;
+  let last = 0, match;
+  while ((match = imgRe.exec(filled)) !== null) {
+    if (match.index > last) el.appendChild(document.createTextNode(filled.slice(last, match.index)));
+    const url = match[2] || match[0];
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = match[1] || '';
+    img.className = 'msg-inline-img';
+    img.onerror = () => img.style.display = 'none';
+    el.appendChild(img);
+    last = match.index + match[0].length;
+  }
+  if (last < filled.length) el.appendChild(document.createTextNode(filled.slice(last)));
+}
+
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -418,7 +449,7 @@ function openCharModal(charId = null) {
     document.getElementById('char-name').value         = char.name;
     document.getElementById('char-personality').value  = char.personality;
     document.getElementById('char-opening').value      = char.openingMessage || '';
-    document.getElementById('char-spotify').value      = char.spotifyUrl || '';
+    loadSpotifyField(char.spotifyUrl || '');
     charAvatarData = char.avatar || null;
   } else {
     title.textContent = 'New Character';
@@ -427,9 +458,11 @@ function openCharModal(charId = null) {
     document.getElementById('char-name').value         = '';
     document.getElementById('char-personality').value  = '';
     document.getElementById('char-opening').value      = '';
-    document.getElementById('char-spotify').value      = '';
+    loadSpotifyField('');
     charAvatarData = null;
   }
+
+  document.getElementById('chub-source-link').style.display = 'none';
 
   const prev = document.getElementById('char-avatar-preview');
   renderAvatarPreview(prev, charAvatarData, document.getElementById('char-name').value);
@@ -441,6 +474,96 @@ function closeCharModal() {
   document.getElementById('char-modal-backdrop').classList.remove('open');
   editingCharId  = null;
   charAvatarData = null;
+}
+
+// ─────────────────────────────────────────────
+// SPOTIFY SONG SEARCH
+// ─────────────────────────────────────────────
+let spotifySearchTimer = null;
+
+function loadSpotifyField(url) {
+  document.getElementById('char-spotify').value = url || '';
+  const searchInput = document.getElementById('char-spotify-search');
+  const selected    = document.getElementById('spotify-selected');
+  const results     = document.getElementById('spotify-results');
+  results.innerHTML = '';
+  if (url) {
+    searchInput.style.display = 'none';
+    document.getElementById('spotify-sel-art').style.display = 'none';
+    document.getElementById('spotify-sel-text').textContent = '♫ Spotify link saved';
+    selected.style.display = 'flex';
+  } else {
+    searchInput.style.display = '';
+    searchInput.value = '';
+    selected.style.display = 'none';
+  }
+}
+
+function setSpotifySelection(spotifyUrl, label, artUrl) {
+  document.getElementById('char-spotify').value = spotifyUrl;
+  const searchInput = document.getElementById('char-spotify-search');
+  const results     = document.getElementById('spotify-results');
+  const artEl       = document.getElementById('spotify-sel-art');
+  const textEl      = document.getElementById('spotify-sel-text');
+  results.innerHTML = '';
+  searchInput.style.display = 'none';
+  if (artUrl) { artEl.src = artUrl; artEl.style.display = ''; }
+  else { artEl.style.display = 'none'; }
+  textEl.textContent = label;
+  document.getElementById('spotify-selected').style.display = 'flex';
+}
+
+async function searchSongItunes(query) {
+  const results = document.getElementById('spotify-results');
+  results.innerHTML = '<div class="spotify-result-msg">Searching…</div>';
+  try {
+    const res  = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=6`);
+    const data = await res.json();
+    const tracks = data.results || [];
+    if (!tracks.length) {
+      results.innerHTML = '<div class="spotify-result-msg">No results — try a different name, or paste a Spotify link.</div>';
+      return;
+    }
+    results.innerHTML = '';
+    tracks.forEach(track => {
+      const row = document.createElement('div');
+      row.className = 'spotify-result-row';
+      row.innerHTML = `
+        <img src="${track.artworkUrl60}" alt="" />
+        <div class="spotify-result-info">
+          <div class="spotify-result-track">${escapeHtml(track.trackName)}</div>
+          <div class="spotify-result-artist">${escapeHtml(track.artistName)}</div>
+        </div>`;
+      row.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        results.innerHTML = '<div class="spotify-result-msg">Finding Spotify link…</div>';
+        const spotifySearchUrl = `https://open.spotify.com/search/${encodeURIComponent(track.trackName + ' ' + track.artistName)}`;
+        const fallbackHtml = `<div class="spotify-result-msg">Couldn't find automatically — <a href="${spotifySearchUrl}" target="_blank" rel="noopener" class="spotify-fallback-link">search on Spotify ↗</a> then paste the link above.</div>`;
+        try {
+          const linkRes  = await fetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(track.trackViewUrl)}&userCountry=US`);
+          if (!linkRes.ok) { console.warn('Songlink status:', linkRes.status); results.innerHTML = fallbackHtml; return; }
+          const linkData = await linkRes.json();
+          // Try linksByPlatform first, then dig the ID out of entitiesByUniqueId
+          let spotifyUrl = linkData.linksByPlatform?.spotify?.url;
+          if (!spotifyUrl && linkData.entitiesByUniqueId) {
+            const spotifyKey = Object.keys(linkData.entitiesByUniqueId).find(k => k.startsWith('SPOTIFY_SONG::'));
+            if (spotifyKey) spotifyUrl = `https://open.spotify.com/track/${spotifyKey.replace('SPOTIFY_SONG::', '')}`;
+          }
+          if (spotifyUrl) {
+            setSpotifySelection(spotifyUrl, `${track.trackName} — ${track.artistName}`, track.artworkUrl60);
+          } else {
+            results.innerHTML = fallbackHtml;
+          }
+        } catch (err) {
+          console.warn('Songlink error:', err);
+          results.innerHTML = fallbackHtml;
+        }
+      });
+      results.appendChild(row);
+    });
+  } catch {
+    results.innerHTML = '<div class="spotify-result-msg">Search failed — paste a Spotify link instead.</div>';
+  }
 }
 
 async function saveCharacter() {
@@ -525,7 +648,7 @@ function openCharProfile(charId) {
   // Opening message
   const openingEl = document.getElementById('profile-opening');
   if (char.openingMessage) {
-    openingEl.textContent = '"' + char.openingMessage + '"';
+    openingEl.textContent = '"' + fillPlaceholders(char.openingMessage) + '"';
     openingEl.style.display = '';
   } else {
     openingEl.style.display = 'none';
@@ -533,8 +656,9 @@ function openCharProfile(charId) {
 
   // Personality preview
   const p = char.personality;
+  const pFilled = fillPlaceholders(p);
   document.getElementById('profile-personality-preview').textContent =
-    p.length > 220 ? p.slice(0, 220) + '…' : p;
+    pFilled.length > 220 ? pFilled.slice(0, 220) + '…' : pFilled;
 
   // Persona picker
   const hasPersona = !!(settings.persona?.name || settings.persona?.description);
@@ -736,7 +860,7 @@ function createMessageEl(msg, index) {
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  bubble.textContent = msg.content;
+  renderMessageContent(msg.content, bubble);
 
   const timeEl = document.createElement('div');
   timeEl.className = 'msg-time';
@@ -937,7 +1061,7 @@ async function streamAIResponse() {
 
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
-  let systemContent = currentChar.personality;
+  let systemContent = fillPlaceholders(currentChar.personality);
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
@@ -953,7 +1077,7 @@ function buildAPIMessages() {
 
   // Add chat history (skip opening message if it's a pure assistant seed)
   currentChat.messages.forEach(m => {
-    messages.push({ role: m.role, content: m.content });
+    messages.push({ role: m.role, content: fillPlaceholders(m.content) });
   });
 
   return messages;
@@ -1219,6 +1343,30 @@ async function init() {
 
   document.getElementById('btn-save-character').addEventListener('click', showVibePicker);
 
+  // Spotify song search
+  document.getElementById('char-spotify-search').addEventListener('input', (e) => {
+    const q = e.target.value.trim();
+    clearTimeout(spotifySearchTimer);
+    const results = document.getElementById('spotify-results');
+    if (!q) { results.innerHTML = ''; return; }
+    // Direct Spotify URL paste
+    if (q.includes('open.spotify.com/')) {
+      results.innerHTML = '';
+      setSpotifySelection(q, '♫ Spotify link', null);
+      return;
+    }
+    spotifySearchTimer = setTimeout(() => searchSongItunes(q), 400);
+  });
+  document.getElementById('spotify-sel-clear').addEventListener('click', () => {
+    loadSpotifyField('');
+    document.getElementById('char-spotify-search').focus();
+  });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('spotify-field-wrap')?.contains(e.target)) {
+      document.getElementById('spotify-results').innerHTML = '';
+    }
+  });
+
   // Rosie
   document.getElementById('rosie-toggle').addEventListener('click', toggleRosie);
   document.getElementById('btn-close-rosie').addEventListener('click', closeRosie);
@@ -1384,6 +1532,16 @@ async function init() {
   document.getElementById('browse-search-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') browseSearch();
   });
+
+  // Daily discovery
+  loadDiscoverState();
+  loadDailyDiscovery();
+
+  // Re-load discover if screen crosses the mobile/PC boundary (e.g. browser resize, DevTools)
+  mobileQuery.addEventListener('change', () => {
+    dailyLoading = false;
+    loadDailyDiscovery();
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -1534,7 +1692,7 @@ let rosieStreaming = false;
 function toggleRosie() {
   const panel = document.getElementById('rosie-panel');
   panel.classList.toggle('open');
-  if (panel.classList.contains('open') && window.innerWidth > 600) {
+  if (panel.classList.contains('open') && !mobileQuery.matches) {
     document.getElementById('rosie-input').focus();
   }
 }
@@ -1653,7 +1811,7 @@ async function sendRosieMessage() {
 
   rosieStreaming = false;
   document.getElementById('rosie-send-btn').disabled = false;
-  if (window.innerWidth > 600) document.getElementById('rosie-input').focus();
+  if (!mobileQuery.matches) document.getElementById('rosie-input').focus();
 }
 
 // ─────────────────────────────────────────────
@@ -1735,16 +1893,40 @@ const CHUB_PROXY        = isLocal
   ? 'https://corsproxy.io/?'
   : 'https://chub-proxy.alyssa-a85.workers.dev/?url=';
 const CHUB_API          = 'https://api.chub.ai';
+const CHUB_REQUIRE_TOPICS = [
+  'male', 'yaoi', 'gay', 'bl', 'boys love', "boys' love", 'mlm',
+  'slash', 'male x male', 'm/m', 'mm', 'bara',
+  'gay romance', 'gay male', 'homoerotic', 'homosexual',
+  'male romance', 'gay nsfw', 'gay sex', 'boys\' love',
+];
+
 const CHUB_BLOCK_TOPICS = [
-  'female', 'lesbian', 'yuri', 'femslash', 'wlw', 'girl', 'girls',
-  'femboy', 'femboys', 'trap', 'traps', 'crossdressing', 'crossdresser',
+  // Female characters
+  'female', 'lesbian', 'yuri', 'femslash', 'wlw',
+  'girl', 'girls', 'woman', 'women', 'heroine',
+  'female protagonist', 'female lead', 'female character',
+  'female reader', 'female mc', 'female pov',
+  'she/her', 'her/she',
+  // Femboys / crossdressing / ambiguous
+  'femboy', 'femboys', 'fem boy', 'fem-boy',
+  'trap', 'traps', 'crossdressing', 'crossdresser', 'cross-dresser',
   'otokonoko', 'genderbend', 'genderswap', 'gender bender',
+  'genderfluid', 'gender fluid', 'non-binary', 'nonbinary', 'enby',
+  'futanari', 'futa', 'shemale', 'she-male', 'sissy',
+  'feminine male', 'feminine boy', 'catgirl', 'catgirls', 'cat girl',
+  // Animals
   'animal', 'animals', 'feral', 'furry', 'zoo', 'bestiality', 'zoophilia',
 ];
 const CHUB_BLOCK_TEXT = [
+  // Female POV / reader inserts
   'female pov', 'fempov', '[fempov]', '(fempov)',
   'female reader', 'female protagonist', 'female mc',
   'female lead', 'girl pov', '[fem pov]', '(fem pov)',
+  // Femboy / crossdress in name or description
+  'femboy', 'fem boy', 'feminine boy', 'sissy',
+  'crossdress', 'cross dress',
+  // Female character indicators
+  'she/her', 'catgirl', 'shemale', 'she-male', 'futanari',
 ];
 const DEAD_DOVE_TAGS    = ['dead dove', 'dead-dove', 'noncon', 'non-con', 'rape', 'incest', 'snuff', 'gore', 'torture', 'underage', 'zoophilia', 'bestiality', 'beastiality', 'zoo'];
 
@@ -1754,9 +1936,23 @@ let browseLoading = false;
 let browseHasMore = false;
 let browseNodes   = [];
 
+let dailyPage    = 1;
+let dailyHasMore = false;
+let dailyLoading = false;
+const mobileQuery = window.matchMedia('(max-width: 600px)');
+
 function isDeadDove(topics = []) {
   const lower = topics.map(t => t.toLowerCase());
   return DEAD_DOVE_TAGS.some(tag => lower.some(t => t === tag || t.includes(tag)));
+}
+
+function getDailyStartPage() {
+  const dateStr = new Date().toISOString().slice(0, 10); // "2026-03-14"
+  let hash = 0;
+  for (let i = 0; i < dateStr.length; i++) {
+    hash = (hash * 31 + dateStr.charCodeAt(i)) & 0xffffffff;
+  }
+  return (Math.abs(hash) % 10) + 1; // pages 1–10
 }
 
 async function chubFetch(path) {
@@ -1771,7 +1967,7 @@ async function chubFetch(path) {
 
 function openBrowse() {
   document.getElementById('browse-backdrop').classList.add('open');
-  if (window.innerWidth <= 600) {
+  if (mobileQuery.matches) {
     document.getElementById('rosie-toggle').style.display = 'none';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
@@ -1819,11 +2015,12 @@ async function loadBrowsePage() {
     browseHasMore  = rawNodes.length > 0;
     const nodes = rawNodes.filter(n => {
       const topics = (n.topics || []).map(t => t.toLowerCase());
-      const nameDesc = `${n.name || ''} ${n.description || ''}`.toLowerCase();
+      const nameDesc = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
       const blockedDoveText = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
-      return !blockedTag && !blockedText && !blockedDoveText && !isDeadDove(n.topics || []);
+      return !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
     });
     browseNodes = nodes;
     if (rawNodes.length === 0) browseHasMore = false;
@@ -1865,7 +2062,7 @@ function renderBrowseGrid(nodes, grid) {
 
     const taglineEl = document.createElement('div');
     taglineEl.className = 'browse-card-tagline';
-    taglineEl.textContent = node.tagline || '';
+    taglineEl.textContent = (node.tagline || '').replace(/\{\{char\}\}/gi, node.name || '').replace(/\{\{user\}\}/gi, 'you');
 
     const tagsEl = document.createElement('div');
     tagsEl.className = 'browse-card-tags';
@@ -1926,7 +2123,7 @@ function showBrowseProfile(node) {
   if (node.tagline) {
     const taglineEl = document.createElement('div');
     taglineEl.className = 'bprofile-tagline';
-    taglineEl.textContent = node.tagline;
+    taglineEl.textContent = node.tagline.replace(/\{\{char\}\}/gi, node.name || '').replace(/\{\{user\}\}/gi, 'you');
     profile.appendChild(taglineEl);
   }
 
@@ -1997,40 +2194,343 @@ function renderBrowsePagination() {
   el.appendChild(nextBtn);
 }
 
+// ─── DAILY DISCOVERY (PC home screen) ────────────────────────────────────────
+
+function getHiddenBots() {
+  try { return new Set(JSON.parse(localStorage.getItem('hidden-discover') || '[]')); }
+  catch { return new Set(); }
+}
+
+function loadDiscoverState() {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const saved = JSON.parse(localStorage.getItem('discover-state') || 'null');
+    if (saved && saved.date === today) {
+      dailyPage = saved.page || getDailyStartPage();
+    } else {
+      dailyPage = getDailyStartPage();
+      saveDiscoverState();
+    }
+  } catch { dailyPage = getDailyStartPage(); }
+}
+
+function saveDiscoverState() {
+  const today = new Date().toISOString().slice(0, 10);
+  localStorage.setItem('discover-state', JSON.stringify({ date: today, page: dailyPage }));
+}
+
+function hideDiscoverBot(fullPath, cardEl) {
+  const hidden = getHiddenBots();
+  hidden.add(fullPath);
+  localStorage.setItem('hidden-discover', JSON.stringify([...hidden]));
+  cardEl.classList.add('discover-card-hiding');
+  cardEl.addEventListener('animationend', () => cardEl.remove());
+}
+
+async function loadDailyDiscovery() {
+  if (dailyLoading) return;
+  dailyLoading = true;
+  saveDiscoverState();
+
+  const grid = document.getElementById('discover-grid');
+  const pag  = document.getElementById('discover-pagination');
+  grid.innerHTML = '<div class="browse-loading">Loading…</div>';
+  pag.innerHTML  = '';
+
+  try {
+    const params = new URLSearchParams({
+      page:         dailyPage,
+      page_size:    mobileQuery.matches ? 12 : 48,
+      content_type: 'characters',
+      nsfw:         'true',
+      sort:         'rating_count',
+    });
+
+    const data     = await chubFetch(`/search?${params}`);
+    const inner    = data.data || data;
+    const rawNodes = inner.nodes || inner.results || [];
+    dailyHasMore   = rawNodes.length > 0;
+    const hiddenBots = getHiddenBots();
+
+    const nodes = rawNodes.filter(n => {
+      if (hiddenBots.has(n.fullPath)) return false;
+      const topics     = (n.topics || []).map(t => t.toLowerCase());
+      const nameDesc   = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
+      const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
+      const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
+      const blockedDove = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
+      return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
+    });
+
+    renderDiscoverGrid(nodes, grid);
+    renderDiscoverPagination();
+  } catch (err) {
+    grid.innerHTML = `<div class="browse-empty">Couldn't load discoveries · ${err.message}</div>`;
+  }
+
+  dailyLoading = false;
+}
+
+function renderDiscoverGrid(nodes, grid) {
+  grid.innerHTML = '';
+  if (!nodes.length) {
+    grid.innerHTML = '<div class="browse-empty">Nothing to show today!</div>';
+    return;
+  }
+
+  nodes.forEach(node => {
+    const card = document.createElement('div');
+    card.className = 'discover-card';
+
+    // ── Image area ──
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'discover-card-img';
+
+    const img = document.createElement('img');
+    img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+    img.alt = node.name || '';
+
+    const fallback = document.createElement('div');
+    fallback.className = 'discover-card-initials';
+    fallback.textContent = initials(node.name);
+    fallback.style.display = 'none';
+
+    img.onerror = () => { img.style.display = 'none'; fallback.style.display = 'flex'; };
+    imgWrap.appendChild(img);
+    imgWrap.appendChild(fallback);
+
+    if (node.rating_count) {
+      const badge = document.createElement('span');
+      badge.className = 'discover-card-rating';
+      const c = node.rating_count;
+      badge.textContent = c >= 1000 ? `${(c / 1000).toFixed(1)}k` : c;
+      imgWrap.appendChild(badge);
+    }
+
+    // ── Body ──
+    const body = document.createElement('div');
+    body.className = 'discover-card-body';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'discover-card-name';
+    nameEl.textContent = node.name || 'Unknown';
+    body.appendChild(nameEl);
+
+    if (node.tagline) {
+      const taglineEl = document.createElement('div');
+      taglineEl.className = 'discover-card-tagline';
+      taglineEl.textContent = node.tagline.replace(/\{\{char\}\}/gi, node.name || '').replace(/\{\{user\}\}/gi, 'you');
+      body.appendChild(taglineEl);
+    }
+
+    if (node.topics?.length) {
+      const tagsEl = document.createElement('div');
+      tagsEl.className = 'discover-card-tags';
+      node.topics.slice(0, 4).forEach(t => {
+        const pill = document.createElement('span');
+        pill.className = 'discover-tag';
+        pill.textContent = t;
+        tagsEl.appendChild(pill);
+      });
+      body.appendChild(tagsEl);
+    }
+
+    const importBtn = document.createElement('button');
+    importBtn.className = 'btn-primary discover-import-btn';
+    importBtn.textContent = 'Import';
+    importBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      importChubChar(node.fullPath, node.name, importBtn);
+    });
+    body.appendChild(importBtn);
+
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'discover-hide-btn';
+    hideBtn.textContent = '✕ hide';
+    hideBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hideDiscoverBot(node.fullPath, card);
+    });
+    body.appendChild(hideBtn);
+
+    card.appendChild(imgWrap);
+    card.appendChild(body);
+
+    card.addEventListener('click', (e) => {
+      if (!e.target.closest('.discover-import-btn')) {
+        openBrowse();
+        showBrowseProfile(node);
+      }
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+function renderDiscoverPagination() {
+  const el = document.getElementById('discover-pagination');
+  el.innerHTML = '';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'btn-secondary';
+  prevBtn.textContent = '← Prev';
+  prevBtn.disabled = dailyPage <= 1;
+  prevBtn.addEventListener('click', async () => {
+    if (dailyPage > 1) { dailyPage--; await loadDailyDiscovery(); }
+  });
+
+  const info = document.createElement('span');
+  info.className = 'discover-page-info';
+  info.textContent = `Page ${dailyPage}`;
+  info.title = 'Click to jump to a page';
+  info.style.cursor = 'pointer';
+  info.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.value = dailyPage;
+    input.className = 'discover-page-input';
+    info.replaceWith(input);
+    input.select();
+    const go = async () => {
+      const val = parseInt(input.value);
+      if (val >= 1) { dailyPage = val; await loadDailyDiscovery(); }
+      else input.replaceWith(info);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') go();
+      if (e.key === 'Escape') input.replaceWith(info);
+    });
+    input.addEventListener('blur', go);
+  });
+
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'btn-secondary';
+  nextBtn.textContent = 'Next →';
+  nextBtn.disabled = !dailyHasMore;
+  nextBtn.addEventListener('click', async () => {
+    if (dailyHasMore) { dailyPage++; await loadDailyDiscovery(); }
+  });
+
+  el.appendChild(prevBtn);
+  el.appendChild(info);
+  el.appendChild(nextBtn);
+}
+
+function parsePngCharaData(buffer) {
+  try {
+    const bytes = new Uint8Array(buffer);
+    const view  = new DataView(buffer);
+    let offset  = 8; // skip PNG signature
+    while (offset < bytes.length - 12) {
+      const length = view.getUint32(offset); offset += 4;
+      const type   = String.fromCharCode(bytes[offset], bytes[offset+1], bytes[offset+2], bytes[offset+3]); offset += 4;
+      if (type === 'tEXt' || type === 'iTXt') {
+        let pos = offset;
+        while (pos < offset + length && bytes[pos] !== 0) pos++;
+        const keyword = new TextDecoder().decode(bytes.slice(offset, pos));
+        if (keyword === 'chara') {
+          let textStart = pos + 1;
+          if (type === 'iTXt') {
+            textStart += 2; // compression flag + method
+            while (bytes[textStart] !== 0) textStart++; textStart++; // language tag
+            while (bytes[textStart] !== 0) textStart++; textStart++; // translated keyword
+          }
+          const b64  = new TextDecoder().decode(bytes.slice(textStart, offset + length));
+          const card = JSON.parse(atob(b64));
+          return card.data || card; // V2 wraps in { spec, data:{...} }
+        }
+      }
+      offset += length + 4;
+    }
+  } catch (_) {}
+  return null;
+}
+
 async function importChubChar(fullPath, name, btn) {
   btn.disabled    = true;
   btn.textContent = '…';
 
   try {
-    const data     = await chubFetch(`/api/characters/${fullPath}`);
-    const node     = data.node || data;
-    // V2 card data is nested under node.character.data or flattened
-    const cardData = node.character?.data || node.character || node;
+    const data = await chubFetch(`/api/characters/${fullPath}`);
+    const node = data.node || data;
 
-    const charName   = cardData.name        || node.name || name;
-    const personality= cardData.description || node.description || '';
-    const openingMsg = cardData.first_mes   || node.first_mes   || '';
+    // node.character may be a parsed object, a JSON string, or a base64 string
+    let character = node.character;
+    if (typeof character === 'string') {
+      try { character = JSON.parse(character); }
+      catch (_) {
+        try { character = JSON.parse(atob(character)); } catch (_) {}
+      }
+    }
+    const cardData = character?.data || character || node.definition?.data || node.definition || null;
 
-    // Fetch avatar and convert to base64
+    // Start with API card data (may be null if parsing failed)
+    let charName    = cardData?.name || '';
+    let personality = cardData?.description || cardData?.personality || cardData?.char_persona || '';
+    let openingMsg  = cardData?.first_mes || cardData?.greeting || cardData?.mes_example || '';
+
+    // Only fetch the PNG card if node.character didn't give us the definitions.
+    // Must NOT go through the proxy (proxy garbles binary data); avatars.charhub.io has CORS headers.
+    if (!charName || !personality || !openingMsg) {
+      try {
+        const cardUrl = `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png`;
+        const res = await fetch(cardUrl);
+        if (res.ok) {
+          const parsed = parsePngCharaData(await res.arrayBuffer());
+          if (parsed) {
+            if (!charName)    charName    = parsed.name || '';
+            if (!personality) personality = parsed.description || parsed.personality || parsed.char_persona || '';
+            if (!openingMsg)  openingMsg  = parsed.first_mes  || parsed.greeting    || '';
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Last resort for name: use node.name (card title) only if definitions gave us nothing
+    if (!charName) charName = node.name || name;
+
+    // Absolute last resort: use public-facing API fields
+    if (!personality) personality = node.description || node.personality || '';
+    if (!openingMsg)  openingMsg  = node.first_mes   || node.greeting   || '';
+
+    // Fetch avatar via canvas (avoids proxy binary issues)
     let avatarB64 = null;
     try {
-      const avatarUrl = `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png`;
-      const imgRes = await fetch(`${CHUB_PROXY}${encodeURIComponent(avatarUrl)}`);
-      if (imgRes.ok) {
-        const blob = await imgRes.blob();
-        avatarB64 = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
-      }
+      avatarB64 = await new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width  = img.naturalWidth  || 512;
+            canvas.height = img.naturalHeight || 512;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg', 0.88));
+          } catch { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+        img.src = `https://avatars.charhub.io/avatars/${fullPath}/chara_card_v2.png`;
+      });
     } catch (_) {}
 
     closeBrowse();
     openCharModal();
     document.getElementById('char-name').value        = charName;
     document.getElementById('char-personality').value = personality;
-    document.getElementById('char-opening').value     = openingMsg;
+    const openingField  = document.getElementById('char-opening');
+    const chubLinkWrap  = document.getElementById('chub-source-link');
+    const chubLinkAnchor = document.getElementById('chub-source-anchor');
+    openingField.value = openingMsg;
+    if (!openingMsg) {
+      openingField.placeholder = '⚠️ no opening message found on chub — add one manually';
+      chubLinkAnchor.href = `https://chub.ai/characters/${fullPath}`;
+      chubLinkWrap.style.display = '';
+    } else {
+      openingField.placeholder = 'First message the character sends when a new chat begins (optional).';
+      chubLinkWrap.style.display = 'none';
+    }
 
     if (avatarB64) {
       charAvatarData = avatarB64;
