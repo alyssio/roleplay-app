@@ -1553,6 +1553,23 @@ async function init() {
   loadDiscoverState();
   loadDailyDiscovery();
 
+  // Poll KV every 15 seconds and hide any newly-hidden bots without a full reload
+  setInterval(async () => {
+    if (!WORKER_BASE || KV_TOKEN === 'REPLACE_ME') return;
+    try {
+      const res = await fetch(`${WORKER_BASE}?kv=hidden`, { headers: { 'X-KV-Token': KV_TOKEN } });
+      if (!res.ok) return;
+      const kvList = await res.json();
+      const local = JSON.parse(localStorage.getItem('hidden-discover') || '[]');
+      const merged = new Set([...kvList, ...local]);
+      localStorage.setItem('hidden-discover', JSON.stringify([...merged]));
+      // Hide any cards currently visible that are in the merged set
+      merged.forEach(path => {
+        document.querySelectorAll(`.discover-card[data-path="${path}"]`).forEach(el => el.remove());
+      });
+    } catch { /* silent */ }
+  }, 15000);
+
   // Re-load discover if screen crosses the mobile/PC boundary (e.g. browser resize, DevTools)
   mobileQuery.addEventListener('change', () => {
     dailyLoading = false;
@@ -2330,6 +2347,7 @@ function renderDiscoverGrid(nodes, grid) {
   nodes.forEach(node => {
     const card = document.createElement('div');
     card.className = 'discover-card';
+    card.dataset.path = node.fullPath;
 
     // ── Image area ──
     const imgWrap = document.createElement('div');
