@@ -2215,23 +2215,20 @@ function renderBrowsePagination() {
 // ─── DAILY DISCOVERY (PC home screen) ────────────────────────────────────────
 
 async function getHiddenBots() {
-  console.log('[KV] getHiddenBots called, WORKER_BASE:', WORKER_BASE, 'token ok:', KV_TOKEN !== 'REPLACE_ME');
   // Try KV first (syncs across devices), fall back to localStorage
   if (WORKER_BASE && KV_TOKEN !== 'REPLACE_ME') {
     try {
       const res = await fetch(`${WORKER_BASE}?kv=hidden`, {
         headers: { 'X-KV-Token': KV_TOKEN },
       });
-      console.log('[KV] GET status:', res.status);
       if (res.ok) {
         const kvList = await res.json();
-        console.log('[KV] hidden list from server:', kvList);
         const local = JSON.parse(localStorage.getItem('hidden-discover') || '[]');
         const merged = new Set([...kvList, ...local]);
         localStorage.setItem('hidden-discover', JSON.stringify([...merged]));
         return merged;
       }
-    } catch (e) { console.warn('[KV] getHiddenBots failed:', e); }
+    } catch (e) { /* fall through to localStorage */ }
   }
   try { return new Set(JSON.parse(localStorage.getItem('hidden-discover') || '[]')); }
   catch { return new Set(); }
@@ -2242,13 +2239,12 @@ async function saveHiddenBots(hiddenSet) {
   localStorage.setItem('hidden-discover', JSON.stringify(arr));
   if (WORKER_BASE && KV_TOKEN !== 'REPLACE_ME') {
     try {
-      const res = await fetch(`${WORKER_BASE}?kv=hidden`, {
+      await fetch(`${WORKER_BASE}?kv=hidden`, {
         method:  'POST',
         headers: { 'X-KV-Token': KV_TOKEN, 'Content-Type': 'application/json' },
         body:    JSON.stringify(arr),
       });
-      console.log('[KV] POST status:', res.status, await res.text());
-    } catch (e) { console.warn('[KV] saveHiddenBots failed:', e); }
+    } catch (e) { /* best effort */ }
   }
 }
 
