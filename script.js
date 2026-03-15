@@ -540,22 +540,28 @@ async function searchSongItunes(query) {
         e.preventDefault();
         results.innerHTML = '<div class="spotify-result-msg">Finding link…</div>';
         const label = `${track.trackName} — ${track.artistName}`;
+        const order = ['spotify','appleMusic','youtubeMusic','youtube','deezer','tidal','amazonMusic','pandora'];
+        let musicUrl = null;
         try {
           const linkRes = await fetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(track.trackViewUrl)}&userCountry=US`);
           if (linkRes.ok) {
             const linkData = await linkRes.json();
-            // Prefer Spotify, then Apple Music, then YouTube
-            let musicUrl = linkData.linksByPlatform?.spotify?.url;
+            // Check entitiesByUniqueId for Spotify track ID
             if (!musicUrl && linkData.entitiesByUniqueId) {
               const spotifyKey = Object.keys(linkData.entitiesByUniqueId).find(k => k.startsWith('SPOTIFY_SONG::'));
               if (spotifyKey) musicUrl = `https://open.spotify.com/track/${spotifyKey.replace('SPOTIFY_SONG::', '')}`;
             }
-            if (!musicUrl) musicUrl = linkData.linksByPlatform?.appleMusic?.url;
-            if (!musicUrl) musicUrl = linkData.linksByPlatform?.youtubeMusic?.url || linkData.linksByPlatform?.youtube?.url;
-            if (musicUrl) { setSpotifySelection(musicUrl, label, track.artworkUrl60); return; }
+            // Try all platforms in order
+            for (const p of order) {
+              if (!musicUrl && linkData.linksByPlatform?.[p]?.url) musicUrl = linkData.linksByPlatform[p].url;
+            }
           }
         } catch { /* fall through */ }
-        results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste a Spotify or Apple Music URL above.</div>';
+        if (musicUrl) {
+          setSpotifySelection(musicUrl, label, track.artworkUrl60);
+        } else {
+          results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste one above.</div>';
+        }
       });
       results.appendChild(row);
     });
@@ -785,9 +791,14 @@ function toMusicEmbed(url) {
       const vid = u.searchParams.get('v') || u.pathname.split('/').pop();
       if (vid) return { type: 'iframe', src: `https://www.youtube.com/embed/${vid}?autoplay=0` };
     }
-    // iTunes preview (direct audio)
-    if (h.includes('audio-ssl.itunes.apple.com') || h.includes('aod.itunes.apple.com') || url.includes('preview')) {
-      return { type: 'audio', src: url };
+    // Deezer
+    if (h.includes('deezer.com')) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) return { type: 'iframe', src: `https://widget.deezer.com/widget/dark/${parts[0]}/${parts[1]}` };
+    }
+    // Tidal
+    if (h.includes('tidal.com')) {
+      return { type: 'iframe', src: `https://embed.tidal.com${u.pathname}` };
     }
     return null;
   } catch { return null; }
