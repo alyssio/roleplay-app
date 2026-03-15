@@ -2027,13 +2027,7 @@ function _mapJaiChar(c) {
     tagline:    (() => {
       const d = document.createElement('div');
       d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' ');
-      let txt = d.textContent.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim();
-      if (txt.length > 300) {
-        const cut = txt.slice(0, 300);
-        const last = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'));
-        txt = last > 100 ? txt.slice(0, last + 1) : cut.trimEnd() + '…';
-      }
-      return txt;
+      return d.textContent.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim();
     })(),
     topics:     [],
     _jai:       true,
