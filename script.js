@@ -555,12 +555,7 @@ async function searchSongItunes(query) {
             if (musicUrl) { setSpotifySelection(musicUrl, label, track.artworkUrl60); return; }
           }
         } catch { /* fall through */ }
-        // Last resort: iTunes 30s preview
-        if (track.previewUrl) {
-          setSpotifySelection(track.previewUrl, label + ' (preview)', track.artworkUrl60);
-        } else {
-          results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste a Spotify/Apple Music URL above.</div>';
-        }
+        results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste a Spotify or Apple Music URL above.</div>';
       });
       results.appendChild(row);
     });
