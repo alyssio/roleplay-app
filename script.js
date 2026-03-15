@@ -11,7 +11,7 @@
 // new Date().toISOString() — then push to GitHub.
 // To disable: set MAINTENANCE back to false and push again.
 // ─────────────────────────────────────────────
-const MAINTENANCE       = true;
+const MAINTENANCE       = false;
 const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
 const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
