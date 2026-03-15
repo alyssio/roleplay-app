@@ -2421,8 +2421,9 @@ function renderDiscoverGrid(nodes, grid) {
     const img = document.createElement('img');
     img.alt = node.name || '';
     if (node._cai) {
-      img.referrerPolicy = 'no-referrer';
-      img.src = node._caiAvatar || '';
+      img.src = node._caiAvatar
+        ? `${CAI_SERVER}/avatar?url=${encodeURIComponent(node._caiAvatar)}`
+        : '';
     } else {
       img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
     }
