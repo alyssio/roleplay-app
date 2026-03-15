@@ -2383,11 +2383,10 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Mix C.AI into first page only, shuffle together
+    // Interleave C.AI into every page every ~6 Chub cards
     const allNodes = [...rawNodes.filter(filterNode)];
-    if (dailyPage === 1) {
-      const filteredCai = caiNodes.filter(filterNode);
-      // Interleave C.AI every ~6 Chub cards
+    const filteredCai = caiNodes.filter(filterNode);
+    if (filteredCai.length) {
       filteredCai.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
