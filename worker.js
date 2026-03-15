@@ -27,7 +27,7 @@ export default {
       }
 
       if (request.method === 'GET') {
-        const value = await env.ROLEPLAY_KV.get('hidden-bots');
+        const value = await env.ROLEPLAY_KV.get('hidden-bots', { cacheTtl: 0 });
         return new Response(value || '[]', {
           headers: { ...cors, 'Content-Type': 'application/json' },
         });
