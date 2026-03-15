@@ -1963,6 +1963,7 @@ const CHUB_PROXY        = isLocal
   : 'https://chub-proxy.alyssa-a85.workers.dev/?url=';
 const WORKER_BASE       = 'https://chub-proxy.alyssa-a85.workers.dev';
 const KV_TOKEN          = 'aly-hidden-2026'; // must match KV_SECRET in your Worker env vars
+const CAI_SERVER        = 'https://cai-proxy-production.up.railway.app';
 const CHUB_API          = 'https://api.chub.ai';
 const CHUB_REQUIRE_TOPICS = [
   'male', 'yaoi', 'gay', 'bl', 'boys love', "boys' love", 'mlm',
@@ -2347,13 +2348,31 @@ async function loadDailyDiscovery() {
       sort:         'rating_count',
     });
 
-    const data     = await chubFetch(`/search?${params}`);
-    const inner    = data.data || data;
+    const [chubData, caiData] = await Promise.allSettled([
+      chubFetch(`/search?${params}`),
+      fetch(`${CAI_SERVER}/discover`).then(r => r.json()),
+    ]);
+
+    const inner    = chubData.status === 'fulfilled' ? (chubData.value.data || chubData.value) : {};
     const rawNodes = inner.nodes || inner.results || [];
     dailyHasMore   = rawNodes.length > 0;
+
+    // Normalize C.AI characters to same shape as Chub nodes
+    const caiNodes = caiData.status === 'fulfilled'
+      ? (caiData.value.characters || []).map(c => ({
+          fullPath:   `cai:${c.id}`,
+          name:       c.name,
+          tagline:    c.description,
+          topics:     [],
+          _cai:       true,
+          _caiAvatar: c.avatar,
+          _caiId:     c.id,
+        }))
+      : [];
+
     const hiddenBots = await getHiddenBots();
 
-    const nodes = rawNodes.filter(n => {
+    const filterNode = n => {
       if (hiddenBots.has(n.fullPath)) return false;
       const topics     = (n.topics || []).map(t => t.toLowerCase());
       const nameDesc   = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
@@ -2362,7 +2381,16 @@ async function loadDailyDiscovery() {
       const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
       const blockedDove = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
-    });
+    };
+
+    // Mix C.AI into first page only, shuffle together
+    const allNodes = [...rawNodes.filter(filterNode)];
+    if (dailyPage === 1) {
+      const filteredCai = caiNodes.filter(filterNode);
+      // Interleave C.AI every ~6 Chub cards
+      filteredCai.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
+    }
+    const nodes = allNodes;
 
     renderDiscoverGrid(nodes, grid);
     renderDiscoverPagination();
@@ -2390,7 +2418,9 @@ function renderDiscoverGrid(nodes, grid) {
     imgWrap.className = 'discover-card-img';
 
     const img = document.createElement('img');
-    img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+    img.src = node._cai
+      ? (node._caiAvatar || '')
+      : `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
     img.alt = node.name || '';
 
     const fallback = document.createElement('div');
@@ -2438,12 +2468,20 @@ function renderDiscoverGrid(nodes, grid) {
       body.appendChild(tagsEl);
     }
 
+    if (node._cai) {
+      const badge = document.createElement('span');
+      badge.className = 'discover-source-badge';
+      badge.textContent = 'C.AI';
+      imgWrap.appendChild(badge);
+    }
+
     const importBtn = document.createElement('button');
     importBtn.className = 'btn-primary discover-import-btn';
     importBtn.textContent = 'Import';
     importBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      importChubChar(node.fullPath, node.name, importBtn);
+      if (node._cai) importCaiChar(node._caiId, node.name, node._caiAvatar, node.tagline, importBtn);
+      else importChubChar(node.fullPath, node.name, importBtn);
     });
     body.appendChild(importBtn);
 
@@ -2648,6 +2686,47 @@ async function importChubChar(fullPath, name, btn) {
     }
 
     toast(`Imported "${charName}" — review and save! 🌸`, 'success');
+  } catch (err) {
+    toast('Import failed: ' + err.message, 'error');
+    btn.disabled    = false;
+    btn.textContent = 'Import';
+  }
+}
+
+async function importCaiChar(_id, name, avatarUrl, description, btn) {
+  btn.disabled    = true;
+  btn.textContent = '…';
+  try {
+    let avatarB64 = null;
+    if (avatarUrl) {
+      avatarB64 = await new Promise(resolve => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width  = img.naturalWidth  || 400;
+            canvas.height = img.naturalHeight || 400;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg', 0.88));
+          } catch { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+        img.src = avatarUrl;
+      });
+    }
+    closeBrowse();
+    openCharModal();
+    document.getElementById('char-name').value        = name || '';
+    document.getElementById('char-personality').value = description || '';
+    document.getElementById('char-opening').value     = '';
+    document.getElementById('char-opening').placeholder = 'C.AI import — add an opening message manually.';
+    document.getElementById('chub-source-link').style.display = 'none';
+    if (avatarB64) {
+      charAvatarData = avatarB64;
+      renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, name);
+    }
+    toast(`Imported "${name}" from C.AI — review and save! 🌸`, 'success');
   } catch (err) {
     toast('Import failed: ' + err.message, 'error');
     btn.disabled    = false;
