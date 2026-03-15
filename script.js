@@ -1325,6 +1325,36 @@ async function init() {
     if (file) { importData(file); e.target.value = ''; }
   });
 
+  document.getElementById('btn-export-hidden').addEventListener('click', () => {
+    const hidden       = JSON.parse(localStorage.getItem('hidden-discover') || '[]');
+    const discoverState = JSON.parse(localStorage.getItem('discover-state') || 'null');
+    const blob = new Blob([JSON.stringify({ hiddenBots: hidden, discoverState }, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `hidden-list-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Hidden list exported.', 'success');
+  });
+  document.getElementById('import-hidden-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    file.text().then(text => {
+      try {
+        const data = JSON.parse(text);
+        if (!Array.isArray(data.hiddenBots)) throw new Error('Invalid hidden list file.');
+        const existing = new Set(JSON.parse(localStorage.getItem('hidden-discover') || '[]'));
+        data.hiddenBots.forEach(id => existing.add(id));
+        localStorage.setItem('hidden-discover', JSON.stringify([...existing]));
+        if (data.discoverState) localStorage.setItem('discover-state', JSON.stringify(data.discoverState));
+        toast(`Hidden list imported — ${data.hiddenBots.length} bots merged.`, 'success');
+        loadDailyDiscovery();
+      } catch (err) { toast('Import failed: ' + err.message, 'error'); }
+    });
+  });
+
   // ── Character modal ──────────────────────────
   document.getElementById('btn-new-character').addEventListener('click', () => {
     document.getElementById('new-char-choice-backdrop').classList.add('open');

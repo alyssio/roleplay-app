@@ -266,6 +266,12 @@
           <button class="btn-secondary" id="btn-import">Import Data</button>
           <input type="file" id="import-file" accept=".json" style="display:none" />
         </div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn-secondary" id="btn-export-hidden">Export Hidden List</button>
+          <label class="btn-secondary" id="btn-import-hidden-label" style="cursor:pointer">Import Hidden List
+            <input type="file" id="import-hidden-file" accept=".json" style="display:none" />
+          </label>
+        </div>
       </section>
 
     </div>
@@ -597,7 +603,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=53"></script>
+  <script src="script.js?v=54"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
