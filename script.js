@@ -2693,12 +2693,22 @@ async function importChubChar(fullPath, name, btn) {
   }
 }
 
-async function importCaiChar(_id, name, avatarUrl, description, btn) {
+async function importCaiChar(id, name, avatarUrl, description, btn) {
   btn.disabled    = true;
   btn.textContent = '…';
   try {
+    // Fetch full character details for greeting/opening message
+    let greeting = '';
+    let fullAvatarUrl = avatarUrl;
+    try {
+      const detail = await fetch(`${CAI_SERVER}/character/${id}`).then(r => r.json());
+      if (detail.greeting) greeting = detail.greeting;
+      if (detail.avatar)   fullAvatarUrl = detail.avatar;
+      if (detail.description && !description) description = detail.description;
+    } catch { /* fall through with what we have */ }
+
     let avatarB64 = null;
-    if (avatarUrl) {
+    if (fullAvatarUrl) {
       avatarB64 = await new Promise(resolve => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -2712,14 +2722,15 @@ async function importCaiChar(_id, name, avatarUrl, description, btn) {
           } catch { resolve(null); }
         };
         img.onerror = () => resolve(null);
-        img.src = avatarUrl;
+        img.src = fullAvatarUrl;
       });
     }
+
     closeBrowse();
     openCharModal();
     document.getElementById('char-name').value        = name || '';
     document.getElementById('char-personality').value = description || '';
-    document.getElementById('char-opening').value     = '';
+    document.getElementById('char-opening').value     = greeting;
     document.getElementById('chub-source-link').style.display = 'none';
     if (avatarB64) {
       charAvatarData = avatarB64;
