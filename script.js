@@ -11,7 +11,7 @@
 // new Date().toISOString() — then push to GitHub.
 // To disable: set MAINTENANCE back to false and push again.
 // ─────────────────────────────────────────────
-const MAINTENANCE       = false;
+const MAINTENANCE       = true;
 const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
 const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
@@ -2011,6 +2011,41 @@ let browseNodes   = [];
 let dailyPage    = 1;
 let dailyHasMore = false;
 let dailyLoading = false;
+
+let _jaiCache   = null;
+let _jaiCacheAt = 0;
+const JAI_TTL   = 60 * 60 * 1000;
+
+function _mapJaiChar(c) {
+  const slugs   = (c.tags || []).map(t => t.slug);
+  const blocked = ['scenario', 'rpg', 'multiplepeople', 'multiplefemales'];
+  if (!c.avatar || !slugs.includes('male') && !slugs.includes('mlm')) return null;
+  if (blocked.some(s => slugs.includes(s))) return null;
+  return {
+    fullPath:   `jai:${c.id}`,
+    name:       c.name || 'Unknown',
+    tagline:    (c.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300),
+    topics:     [],
+    _jai:       true,
+    _jaiAvatar: `https://ella.janitorai.com/bot-avatars/${c.avatar}`,
+    _jaiId:     c.id,
+    _jaiMlm:    slugs.includes('mlm'),
+  };
+}
+
+async function fetchJaiChars() {
+  if (_jaiCache && Date.now() - _jaiCacheAt < JAI_TTL) return _jaiCache;
+  const r    = await fetch('https://janitorai.com/hampter/characters?page=1&mode=nsfw&sort=popular');
+  const data = await r.json();
+  const chars = (data.data || []).map(_mapJaiChar).filter(Boolean);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  _jaiCache   = chars;
+  _jaiCacheAt = Date.now();
+  return chars;
+}
 const mobileQuery = window.matchMedia('(max-width: 600px)');
 
 function isDeadDove(topics = []) {
@@ -2348,28 +2383,16 @@ async function loadDailyDiscovery() {
       sort:         'rating_count',
     });
 
-    const [chubData, jaiData] = await Promise.allSettled([
+    const [chubData, jaiResult] = await Promise.allSettled([
       chubFetch(`/search?${params}`),
-      fetch(`${CAI_SERVER}/jai/discover`).then(r => r.json()),
+      fetchJaiChars(),
     ]);
 
     const inner    = chubData.status === 'fulfilled' ? (chubData.value.data || chubData.value) : {};
     const rawNodes = inner.nodes || inner.results || [];
     dailyHasMore   = rawNodes.length > 0;
 
-    // Normalize J.AI characters to same shape as Chub nodes
-    const jaiNodes = jaiData.status === 'fulfilled'
-      ? (jaiData.value.characters || []).map(c => ({
-          fullPath:   `jai:${c.id}`,
-          name:       c.name,
-          tagline:    c.description,
-          topics:     [],
-          _jai:       true,
-          _jaiAvatar: c.avatar,
-          _jaiId:     c.id,
-          _jaiMlm:    c.mlm || false,
-        }))
-      : [];
+    const jaiNodes = jaiResult.status === 'fulfilled' ? jaiResult.value : [];
 
     const hiddenBots = await getHiddenBots();
 
