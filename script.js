@@ -2736,9 +2736,10 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     let avatarB64 = null;
     if (avatarUrl) {
       try {
+        const proxyUrl = `${CAI_SERVER}/jai/avatar?url=${encodeURIComponent(avatarUrl)}`;
         const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 5000);
-        const resp = await fetch(avatarUrl, { signal: ctrl.signal });
+        const t = setTimeout(() => ctrl.abort(), 8000);
+        const resp = await fetch(proxyUrl, { signal: ctrl.signal });
         clearTimeout(t);
         const blob = await resp.blob();
         avatarB64 = await new Promise(r => {
