@@ -2760,6 +2760,7 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
       renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, name);
     }
     toast(`Imported "${name}" from J.AI — review and save! 🌸`, 'success');
+    btn.disabled    = false;
     btn.textContent = 'Imported ✓';
   } catch (err) {
     toast('Import failed: ' + err.message, 'error');
