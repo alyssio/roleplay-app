@@ -533,6 +533,8 @@ html, body {
   width: 100%;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 2;
 }
 #spotify-iframe {
   width: 100%;
