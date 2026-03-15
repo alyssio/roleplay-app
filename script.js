@@ -953,30 +953,25 @@ async function streamAIResponse() {
 
   const container = document.getElementById('messages-container');
 
-  // Placeholder bubble
-  const placeholderMsg = { role: 'assistant', content: '', timestamp: Date.now() };
-  const row   = document.createElement('div');
-  row.className = 'message-row char';
-
-  const avatar = document.createElement('div');
-  avatar.className = 'msg-avatar';
+  // Typing indicator row (bouncing pink hearts)
+  const typingRow = document.createElement('div');
+  typingRow.className = 'message-row char';
+  const typingAvatar = document.createElement('div');
+  typingAvatar.className = 'msg-avatar';
   if (currentChar?.avatar) {
-    avatar.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
+    typingAvatar.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
   } else {
-    avatar.textContent = initials(currentChar?.name || '?');
+    typingAvatar.textContent = initials(currentChar?.name || '?');
   }
-
-  const wrap   = document.createElement('div');
-  wrap.className = 'msg-bubble-wrap';
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  const cursor = document.createElement('span');
-  cursor.className = 'streaming-cursor';
-  bubble.appendChild(cursor);
-  wrap.appendChild(bubble);
-  row.appendChild(avatar);
-  row.appendChild(wrap);
-  container.appendChild(row);
+  const typingWrap   = document.createElement('div');
+  typingWrap.className = 'msg-bubble-wrap';
+  const typingBubble = document.createElement('div');
+  typingBubble.className = 'msg-bubble typing-bubble';
+  typingBubble.innerHTML = '<span>♥</span><span>♥</span><span>♥</span>';
+  typingWrap.appendChild(typingBubble);
+  typingRow.appendChild(typingAvatar);
+  typingRow.appendChild(typingWrap);
+  container.appendChild(typingRow);
   scrollToBottom();
 
   try {
@@ -1009,48 +1004,34 @@ async function streamAIResponse() {
     const decoder = new TextDecoder();
     let   accumulated = '';
 
+    // Accumulate silently — response pops in all at once
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
+      for (const line of chunk.split('\n')) {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6).trim();
         if (data === '[DONE]') break;
-
         try {
-          const parsed = JSON.parse(data);
-          const delta  = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            accumulated += delta;
-            // Update bubble — preserve cursor at end
-            bubble.textContent = accumulated;
-            bubble.appendChild(cursor);
-            scrollToBottom(false);
-          }
+          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+          if (delta) accumulated += delta;
         } catch { /* malformed chunk — skip */ }
       }
     }
 
-    // Finalize
-    bubble.textContent = accumulated || '…';
-    placeholderMsg.content   = accumulated || '…';
-    placeholderMsg.timestamp = Date.now();
-
+    // Remove typing indicator and pop in full response
+    typingRow.remove();
+    const placeholderMsg = { role: 'assistant', content: accumulated || '…', timestamp: Date.now() };
     currentChat.messages.push(placeholderMsg);
     await dbPut('chats', currentChat);
-
-    // Replace streaming row with proper rendered row
     const finalRow = createMessageEl(placeholderMsg, currentChat.messages.length - 1);
-    container.replaceChild(finalRow, row);
+    container.appendChild(finalRow);
     scrollToBottom();
 
   } catch (err) {
     console.error(err);
-    row.remove();
+    typingRow.remove();
     toast('Error: ' + err.message, 'error', 5000);
   }
 
