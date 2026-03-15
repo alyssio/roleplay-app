@@ -2735,21 +2735,15 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
   try {
     let avatarB64 = null;
     if (avatarUrl) {
-      avatarB64 = await new Promise(resolve => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width  = img.naturalWidth  || 400;
-            canvas.height = img.naturalHeight || 400;
-            canvas.getContext('2d').drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/jpeg', 0.88));
-          } catch { resolve(null); }
-        };
-        img.onerror = () => resolve(null);
-        img.src = avatarUrl;
-      });
+      try {
+        const resp = await fetch(avatarUrl);
+        const blob = await resp.blob();
+        avatarB64 = await new Promise(r => {
+          const fr = new FileReader();
+          fr.onload = () => r(fr.result);
+          fr.readAsDataURL(blob);
+        });
+      } catch { avatarB64 = null; }
     }
 
     closeBrowse();
