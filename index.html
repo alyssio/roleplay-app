@@ -143,6 +143,7 @@
 
     <div id="music-player" style="display:none">
       <iframe id="spotify-iframe" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+      <a id="music-open-link" href="#" target="_blank" rel="noopener" style="display:none;padding:8px 12px;font-size:13px;color:var(--accent);text-decoration:none;display:none;align-items:center;gap:6px;">♫ Open song ↗</a>
     </div>
 
     <div class="messages-container" id="messages-container">
@@ -603,7 +604,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=71"></script>
+  <script src="script.js?v=72"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })

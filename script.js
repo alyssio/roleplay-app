@@ -788,30 +788,29 @@ function toMusicEmbed(url) {
 }
 
 function setupMusicPlayer(musicUrl) {
-  const btn    = document.getElementById('btn-music');
-  const player = document.getElementById('music-player');
-  const iframe = document.getElementById('spotify-iframe');
+  const btn      = document.getElementById('btn-music');
+  const player   = document.getElementById('music-player');
+  const iframe   = document.getElementById('spotify-iframe');
+  const openLink = document.getElementById('music-open-link');
 
   // Reset
-  player.style.display = 'none';
-  btn.style.display    = 'none';
-  iframe.src           = '';
+  player.style.display     = 'none';
+  btn.style.display        = 'none';
+  iframe.src               = '';
+  iframe.style.display     = 'none';
+  openLink.style.display   = 'none';
   const old = player.querySelector('audio');
   if (old) old.remove();
 
   if (!musicUrl) return;
 
   const embed = toMusicEmbed(musicUrl);
-  if (!embed) return;
 
-  if (embed.type === 'audio') {
-    iframe.style.display = 'none';
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.src = embed.src;
-    audio.style.cssText = 'width:100%;margin-top:4px;';
-    player.appendChild(audio);
-  } else {
+  // Always show the open link
+  openLink.href         = musicUrl;
+  openLink.style.display = 'flex';
+
+  if (embed?.type === 'iframe') {
     iframe.style.display = '';
     iframe.src = embed.src;
   }
