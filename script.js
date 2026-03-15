@@ -517,7 +517,9 @@ async function searchSongItunes(query) {
   const results = document.getElementById('spotify-results');
   results.innerHTML = '<div class="spotify-result-msg">Searching…</div>';
   try {
-    const res  = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=6`);
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=6`;
+    const fetchUrl  = WORKER_BASE ? `${WORKER_BASE}?url=${encodeURIComponent(itunesUrl)}` : itunesUrl;
+    const res  = await fetch(fetchUrl);
     const data = await res.json();
     const tracks = data.results || [];
     if (!tracks.length) {
