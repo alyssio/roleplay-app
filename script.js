@@ -2383,11 +2383,13 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Interleave C.AI into every page every ~6 Chub cards
+    // Interleave up to 6 C.AI cards per page, rotating which ones show per page
     const allNodes = [...rawNodes.filter(filterNode)];
     const filteredCai = caiNodes.filter(filterNode);
     if (filteredCai.length) {
-      filteredCai.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
+      const offset = ((dailyPage - 1) * 6) % filteredCai.length;
+      const caiSlice = filteredCai.slice(offset, offset + 6);
+      caiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
 
@@ -2417,10 +2419,13 @@ function renderDiscoverGrid(nodes, grid) {
     imgWrap.className = 'discover-card-img';
 
     const img = document.createElement('img');
-    img.src = node._cai
-      ? (node._caiAvatar || '')
-      : `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
     img.alt = node.name || '';
+    if (node._cai) {
+      img.referrerPolicy = 'no-referrer';
+      img.src = node._caiAvatar || '';
+    } else {
+      img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+    }
 
     const fallback = document.createElement('div');
     fallback.className = 'discover-card-initials';
