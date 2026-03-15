@@ -2298,7 +2298,7 @@ async function loadDailyDiscovery() {
     const inner    = data.data || data;
     const rawNodes = inner.nodes || inner.results || [];
     dailyHasMore   = rawNodes.length > 0;
-    const hiddenBots = getHiddenBots();
+    const hiddenBots = await getHiddenBots();
 
     const nodes = rawNodes.filter(n => {
       if (hiddenBots.has(n.fullPath)) return false;
