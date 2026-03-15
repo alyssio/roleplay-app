@@ -536,27 +536,28 @@ async function searchSongItunes(query) {
         </div>`;
       row.addEventListener('mousedown', async (e) => {
         e.preventDefault();
-        results.innerHTML = '<div class="spotify-result-msg">Finding Spotify link…</div>';
-        const spotifySearchUrl = `https://open.spotify.com/search/${encodeURIComponent(track.trackName + ' ' + track.artistName)}`;
-        const fallbackHtml = `<div class="spotify-result-msg">Couldn't find automatically — <a href="${spotifySearchUrl}" target="_blank" rel="noopener" class="spotify-fallback-link">search on Spotify ↗</a> then paste the link above.</div>`;
+        results.innerHTML = '<div class="spotify-result-msg">Finding link…</div>';
+        const label = `${track.trackName} — ${track.artistName}`;
         try {
-          const linkRes  = await fetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(track.trackViewUrl)}&userCountry=US`);
-          if (!linkRes.ok) { console.warn('Songlink status:', linkRes.status); results.innerHTML = fallbackHtml; return; }
-          const linkData = await linkRes.json();
-          // Try linksByPlatform first, then dig the ID out of entitiesByUniqueId
-          let spotifyUrl = linkData.linksByPlatform?.spotify?.url;
-          if (!spotifyUrl && linkData.entitiesByUniqueId) {
-            const spotifyKey = Object.keys(linkData.entitiesByUniqueId).find(k => k.startsWith('SPOTIFY_SONG::'));
-            if (spotifyKey) spotifyUrl = `https://open.spotify.com/track/${spotifyKey.replace('SPOTIFY_SONG::', '')}`;
+          const linkRes = await fetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(track.trackViewUrl)}&userCountry=US`);
+          if (linkRes.ok) {
+            const linkData = await linkRes.json();
+            // Prefer Spotify, then Apple Music, then YouTube
+            let musicUrl = linkData.linksByPlatform?.spotify?.url;
+            if (!musicUrl && linkData.entitiesByUniqueId) {
+              const spotifyKey = Object.keys(linkData.entitiesByUniqueId).find(k => k.startsWith('SPOTIFY_SONG::'));
+              if (spotifyKey) musicUrl = `https://open.spotify.com/track/${spotifyKey.replace('SPOTIFY_SONG::', '')}`;
+            }
+            if (!musicUrl) musicUrl = linkData.linksByPlatform?.appleMusic?.url;
+            if (!musicUrl) musicUrl = linkData.linksByPlatform?.youtubeMusic?.url || linkData.linksByPlatform?.youtube?.url;
+            if (musicUrl) { setSpotifySelection(musicUrl, label, track.artworkUrl60); return; }
           }
-          if (spotifyUrl) {
-            setSpotifySelection(spotifyUrl, `${track.trackName} — ${track.artistName}`, track.artworkUrl60);
-          } else {
-            results.innerHTML = fallbackHtml;
-          }
-        } catch (err) {
-          console.warn('Songlink error:', err);
-          results.innerHTML = fallbackHtml;
+        } catch { /* fall through */ }
+        // Last resort: iTunes 30s preview
+        if (track.previewUrl) {
+          setSpotifySelection(track.previewUrl, label + ' (preview)', track.artworkUrl60);
+        } else {
+          results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste a Spotify/Apple Music URL above.</div>';
         }
       });
       results.appendChild(row);
@@ -768,16 +769,34 @@ async function openChat(charId, usePersona = true) {
   setupMusicPlayer(currentChar.spotifyUrl);
 }
 
-function toSpotifyEmbed(url) {
+function toMusicEmbed(url) {
   try {
     const u = new URL(url);
-    // e.g. /track/ID or /playlist/ID
-    const path = u.pathname.replace(/^\//, '');
-    return `https://open.spotify.com/embed/${path}?utm_source=oembed`;
+    const h = u.hostname;
+    // Spotify
+    if (h.includes('spotify.com')) {
+      const path = u.pathname.replace(/^\//, '');
+      return { type: 'iframe', src: `https://open.spotify.com/embed/${path}?utm_source=oembed` };
+    }
+    // Apple Music
+    if (h.includes('music.apple.com')) {
+      const src = url.replace('https://music.apple.com', 'https://embed.music.apple.com');
+      return { type: 'iframe', src };
+    }
+    // YouTube / YouTube Music
+    if (h.includes('youtube.com') || h.includes('youtu.be') || h.includes('music.youtube.com')) {
+      const vid = u.searchParams.get('v') || u.pathname.split('/').pop();
+      if (vid) return { type: 'iframe', src: `https://www.youtube.com/embed/${vid}?autoplay=0` };
+    }
+    // iTunes preview (direct audio)
+    if (h.includes('audio-ssl.itunes.apple.com') || h.includes('aod.itunes.apple.com') || url.includes('preview')) {
+      return { type: 'audio', src: url };
+    }
+    return null;
   } catch { return null; }
 }
 
-function setupMusicPlayer(spotifyUrl) {
+function setupMusicPlayer(musicUrl) {
   const btn    = document.getElementById('btn-music');
   const player = document.getElementById('music-player');
   const iframe = document.getElementById('spotify-iframe');
@@ -786,13 +805,26 @@ function setupMusicPlayer(spotifyUrl) {
   player.style.display = 'none';
   btn.style.display    = 'none';
   iframe.src           = '';
+  const old = player.querySelector('audio');
+  if (old) old.remove();
 
-  if (!spotifyUrl) return;
+  if (!musicUrl) return;
 
-  const embedUrl = toSpotifyEmbed(spotifyUrl);
-  if (!embedUrl) return;
+  const embed = toMusicEmbed(musicUrl);
+  if (!embed) return;
 
-  iframe.src        = embedUrl;
+  if (embed.type === 'audio') {
+    iframe.style.display = 'none';
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.src = embed.src;
+    audio.style.cssText = 'width:100%;margin-top:4px;';
+    player.appendChild(audio);
+  } else {
+    iframe.style.display = '';
+    iframe.src = embed.src;
+  }
+
   btn.style.display = '';
 }
 
