@@ -538,30 +538,13 @@ async function searchSongItunes(query) {
         </div>`;
       row.addEventListener('mousedown', async (e) => {
         e.preventDefault();
-        results.innerHTML = '<div class="spotify-result-msg">Finding link…</div>';
         const label = `${track.trackName} — ${track.artistName}`;
-        const order = ['spotify','appleMusic','youtubeMusic','youtube','deezer','tidal','amazonMusic','pandora'];
-        let musicUrl = null;
-        try {
-          const linkRes = await fetch(`https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(track.trackViewUrl)}&userCountry=US`);
-          if (linkRes.ok) {
-            const linkData = await linkRes.json();
-            // Check entitiesByUniqueId for Spotify track ID
-            if (!musicUrl && linkData.entitiesByUniqueId) {
-              const spotifyKey = Object.keys(linkData.entitiesByUniqueId).find(k => k.startsWith('SPOTIFY_SONG::'));
-              if (spotifyKey) musicUrl = `https://open.spotify.com/track/${spotifyKey.replace('SPOTIFY_SONG::', '')}`;
-            }
-            // Try all platforms in order
-            for (const p of order) {
-              if (!musicUrl && linkData.linksByPlatform?.[p]?.url) musicUrl = linkData.linksByPlatform[p].url;
-            }
-          }
-        } catch { /* fall through */ }
-        if (musicUrl) {
-          setSpotifySelection(musicUrl, label, track.artworkUrl60);
-        } else {
-          results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste one above.</div>';
+        // trackViewUrl is already an Apple Music link — use it immediately
+        if (track.trackViewUrl) {
+          setSpotifySelection(track.trackViewUrl, label, track.artworkUrl60);
+          return;
         }
+        results.innerHTML = '<div class="spotify-result-msg">Couldn\'t find a playable link — paste one above.</div>';
       });
       results.appendChild(row);
     });
