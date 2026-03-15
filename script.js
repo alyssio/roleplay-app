@@ -2569,6 +2569,13 @@ async function importChubChar(fullPath, name, btn) {
   }
 }
 
+// Save current chat whenever the tab is hidden or closed
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && currentChat) {
+    dbPut('chats', currentChat);
+  }
+});
+
 // Mobile keyboard — push layout above keyboard when it opens
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
