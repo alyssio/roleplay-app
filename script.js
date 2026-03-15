@@ -1908,7 +1908,7 @@ async function handleVibePick(type) {
 const CHUB_PROXY        = isLocal
   ? 'https://corsproxy.io/?'
   : 'https://chub-proxy.alyssa-a85.workers.dev/?url=';
-const WORKER_BASE       = isLocal ? null : 'https://chub-proxy.alyssa-a85.workers.dev';
+const WORKER_BASE       = 'https://chub-proxy.alyssa-a85.workers.dev';
 const KV_TOKEN          = 'aly-hidden-2026'; // must match KV_SECRET in your Worker env vars
 const CHUB_API          = 'https://api.chub.ai';
 const CHUB_REQUIRE_TOPICS = [
