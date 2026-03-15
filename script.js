@@ -1184,7 +1184,10 @@ async function exportData() {
   const chats = await dbGetAll('chats');
   const s     = await dbGet('settings', 'app');
 
-  const data = { characters: chars, chats, settings: s, exportedAt: new Date().toISOString() };
+  const hiddenBots    = JSON.parse(localStorage.getItem('hidden-discover') || '[]');
+  const discoverState = JSON.parse(localStorage.getItem('discover-state')  || 'null');
+
+  const data = { characters: chars, chats, settings: s, hiddenBots, discoverState, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -1208,6 +1211,8 @@ async function importData(file) {
     for (const c of data.characters) await dbPut('characters', c);
     for (const chat of (data.chats || []))    await dbPut('chats', chat);
     if (data.settings) await dbPut('settings', data.settings);
+    if (Array.isArray(data.hiddenBots))  localStorage.setItem('hidden-discover', JSON.stringify(data.hiddenBots));
+    if (data.discoverState)              localStorage.setItem('discover-state',   JSON.stringify(data.discoverState));
 
     // Reload everything
     settings   = data.settings || {};
