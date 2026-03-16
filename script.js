@@ -1130,50 +1130,55 @@ async function streamAIResponse() {
     const model    = settings.model || 'google/gemini-2.0-flash-001';
     const temp     = settings.temperature ?? 0.8;
 
-    const response = await fetch(getEndpoint(), {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`,
-        'HTTP-Referer':  window.location.href,
-        'X-Title':       'Roleplay Chat',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: temp,
-        stream:      true,
-        messages,
-      }),
-    });
+    const fetchOnce = async () => {
+      const response = await fetch(getEndpoint(), {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`,
+          'HTTP-Referer':  window.location.href,
+          'X-Title':       'Roleplay Chat',
+        },
+        body: JSON.stringify({ model, temperature: temp, stream: true, messages }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `HTTP ${response.status}`);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') break;
+          try {
+            const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+            if (delta) accumulated += delta;
+          } catch { /* skip */ }
+        }
+      }
+      return accumulated || '…';
+    };
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `HTTP ${response.status}`);
-    }
-
-    const reader  = response.body.getReader();
-    const decoder = new TextDecoder();
-    let   accumulated = '';
-
-    // Accumulate silently — response pops in all at once
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') break;
-        try {
-          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-          if (delta) accumulated += delta;
-        } catch { /* malformed chunk — skip */ }
+    // Retry loop — up to 3 attempts if AI roleplays as the user
+    const MAX_RETRIES = 3;
+    let accumulated = '';
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      accumulated = await fetchOnce();
+      if (!detectsUserRoleplay(accumulated)) break;
+      if (attempt < MAX_RETRIES) {
+        typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
       }
     }
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
-    const placeholderMsg = { role: 'assistant', content: accumulated || '…', timestamp: Date.now() };
+    const placeholderMsg = { role: 'assistant', content: accumulated, timestamp: Date.now() };
     currentChat.messages.push(placeholderMsg);
     await dbPut('chats', currentChat);
     const finalRow = createMessageEl(placeholderMsg, currentChat.messages.length - 1);
@@ -1189,6 +1194,23 @@ async function streamAIResponse() {
   isStreaming = false;
   setSendDisabled(false);
   document.getElementById('message-input').focus();
+}
+
+// ── User-roleplay slip detection ──────────────────────────────────────────────
+function detectsUserRoleplay(text) {
+  const name = (settings.persona?.name || '').trim();
+  // Patterns: *You verb, *Name verb, You: dialogue, Name: dialogue
+  const escaped = name ? name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+  const patterns = [
+    /\*You\s+\w/i,                                          // *You walk
+    /^You:\s/im,                                            // You: "hello"
+    /\*You\b/i,                                             // *You (any)
+  ];
+  if (escaped) {
+    patterns.push(new RegExp(`\\*${escaped}\\s+\\w`, 'i')); // *Name does
+    patterns.push(new RegExp(`^${escaped}:\\s`, 'im'));      // Name: "hello"
+  }
+  return patterns.some(p => p.test(text));
 }
 
 function buildAPIMessages() {
