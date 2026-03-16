@@ -580,6 +580,7 @@ function openCharModal(charId = null) {
   const prev = document.getElementById('char-avatar-preview');
   renderAvatarPreview(prev, charAvatarData, document.getElementById('char-name').value);
 
+  restoreCharDraft();
   backdrop.classList.add('open');
 }
 
@@ -587,6 +588,40 @@ function closeCharModal() {
   document.getElementById('char-modal-backdrop').classList.remove('open');
   editingCharId  = null;
   charAvatarData = null;
+  clearCharDraft();
+}
+
+// ── Character form draft (survives refresh) ───────────────────────────────────
+function saveCharDraft() {
+  try {
+    sessionStorage.setItem('charDraft', JSON.stringify({
+      editingCharId,
+      name:        document.getElementById('char-name').value,
+      personality: document.getElementById('char-personality').value,
+      opening:     document.getElementById('char-opening').value,
+      spotify:     document.getElementById('char-spotify').value,
+      avatar:      charAvatarData,
+    }));
+  } catch { /* quota exceeded — skip avatar */ }
+}
+
+function clearCharDraft() {
+  sessionStorage.removeItem('charDraft');
+}
+
+function restoreCharDraft() {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem('charDraft'));
+    if (!draft || draft.editingCharId !== editingCharId) return;
+    if (draft.name        != null) document.getElementById('char-name').value        = draft.name;
+    if (draft.personality != null) document.getElementById('char-personality').value = draft.personality;
+    if (draft.opening     != null) document.getElementById('char-opening').value     = draft.opening;
+    if (draft.spotify)     loadSpotifyField(draft.spotify);
+    if (draft.avatar)      {
+      charAvatarData = draft.avatar;
+      renderAvatarPreview(document.getElementById('char-avatar-preview'), charAvatarData, draft.name || '');
+    }
+  } catch { /* ignore */ }
 }
 
 // ─────────────────────────────────────────────
@@ -694,6 +729,7 @@ async function saveCharacter() {
   if (idx >= 0) characters[idx] = char;
   else          characters.push(char);
 
+  clearCharDraft();
   closeCharModal();
   renderCharacterGrid(characters);
 
@@ -1695,15 +1731,19 @@ async function init() {
       document.getElementById('char-name').value
     );
     e.target.value = '';
+    saveCharDraft();
   });
 
-  // Update avatar preview initials when name changes
+  // Update avatar preview initials when name changes + save draft
   document.getElementById('char-name').addEventListener('input', (e) => {
     if (!charAvatarData) {
       const prev = document.getElementById('char-avatar-preview');
       prev.textContent = initials(e.target.value);
     }
+    saveCharDraft();
   });
+  document.getElementById('char-personality').addEventListener('input', saveCharDraft);
+  document.getElementById('char-opening').addEventListener('input', saveCharDraft);
 
   // ── Chat screen ──────────────────────────────
   document.getElementById('btn-back').addEventListener('click', () => {
@@ -1804,6 +1844,10 @@ document.getElementById('search-input').addEventListener('input', (e) => {
     dailyLoading = false;
     loadDailyDiscovery();
   });
+
+  // Restore character form if page was refreshed mid-creation/edit
+  const _charDraft = (() => { try { return JSON.parse(sessionStorage.getItem('charDraft')); } catch { return null; } })();
+  if (_charDraft) openCharModal(_charDraft.editingCharId || null);
 }
 
 // ─────────────────────────────────────────────
