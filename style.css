@@ -1250,9 +1250,15 @@ input[type="range"] {
   html, body { height: 100dvh; }
   .screen { height: 100dvh; }
 
-  /* Shrink title so header buttons don't get pushed off screen */
-  .app-title { font-size: 1rem; }
-  .home-header { padding: 0 12px; }
+  /* Header: title left, Rosie absolutely centered, icons right */
+  .home-header { padding: 0 12px; position: relative; }
+  .home-header-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: all;
+  }
+  .app-title { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
 
   /* ---- home toolbar: icon-only buttons to save space ---- */
   .home-toolbar {
