@@ -373,11 +373,50 @@ async function loadCharacters() {
   renderCharacterGrid(characters, botCounts);
 }
 
+// ── Swipe-to-delete for char rows ─────────────────────────────────────────────
+let _openSwipeRow = null;
+const SWIPE_REVEAL = 88; // px to reveal delete button
+
+function snapRow(row, x) {
+  row.style.transition = 'transform 0.22s ease';
+  row.style.transform  = x ? `translateX(${x}px)` : '';
+  _openSwipeRow = x ? row : (_openSwipeRow === row ? null : _openSwipeRow);
+}
+
+function addSwipe(wrap, row) {
+  let startX = 0, startY = 0, dx = 0, tracking = false;
+
+  wrap.addEventListener('touchstart', (e) => {
+    if (_openSwipeRow && _openSwipeRow !== row) { snapRow(_openSwipeRow, 0); }
+    startX   = e.touches[0].clientX;
+    startY   = e.touches[0].clientY;
+    dx       = 0;
+    tracking = true;
+    row.style.transition = 'none';
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', (e) => {
+    if (!tracking) return;
+    dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dy) > Math.abs(dx) + 4) { tracking = false; return; }
+    const clamped = Math.max(-SWIPE_REVEAL, Math.min(0, dx));
+    row.style.transform = `translateX(${clamped}px)`;
+  }, { passive: true });
+
+  wrap.addEventListener('touchend', () => {
+    if (!tracking) return;
+    tracking = false;
+    snapRow(row, dx < -SWIPE_REVEAL / 2 ? -SWIPE_REVEAL : 0);
+  });
+}
+
 function openCharSheet() {
   document.getElementById('char-sheet').classList.add('open');
   document.getElementById('char-sheet-backdrop').classList.add('open');
 }
 function closeCharSheet() {
+  if (_openSwipeRow) { snapRow(_openSwipeRow, 0); _openSwipeRow = null; }
   document.getElementById('char-sheet').classList.remove('open');
   document.getElementById('char-sheet-backdrop').classList.remove('open');
 }
@@ -439,7 +478,25 @@ function renderCharacterGrid(list, botCounts = {}) {
       row.appendChild(avatarEl);
       row.appendChild(infoEl);
       row.appendChild(continueBtn);
-      grid.appendChild(row);
+
+      // ── swipe-to-delete wrapper ──────────────────
+      const wrap = document.createElement('div');
+      wrap.className = 'char-row-wrap';
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'char-row-del';
+      delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await dbDelete('chats', char.id);
+        countEl.textContent = 'No messages yet';
+        snapRow(row, 0);
+      });
+
+      wrap.appendChild(delBtn);
+      wrap.appendChild(row);
+      addSwipe(wrap, row);
+      grid.appendChild(wrap);
     } else {
       const card = document.createElement('div');
       card.className = 'character-card';

@@ -509,6 +509,38 @@ html, body {
 }
 .char-row-continue:active { opacity: 0.8; }
 
+/* ---- swipe-to-delete ---- */
+.char-row-wrap {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.char-row-wrap .char-row {
+  position: relative;
+  z-index: 1;
+  will-change: transform;
+}
+.char-row-del {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 88px;
+  background: #e53e3e;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #fff;
+  cursor: pointer;
+  z-index: 0;
+}
+.char-row-del svg { width: 18px; height: 18px; }
+.char-row-del span { font-size: 10px; font-weight: 600; }
+
 /* ---- character sheet (mobile bottom sheet) ---- */
 #char-sheet-backdrop {
   display: none;
