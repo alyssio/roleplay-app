@@ -2754,17 +2754,41 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
       } catch { avatarB64 = null; }
     }
 
+    // Fetch full character detail
+    let personality = description || '';
+    let opening     = '';
+    let defHidden   = false;
+    try {
+      const detail = await fetch(`https://janitorai.com/hampter/characters/${_id}`).then(r => r.json());
+      if (detail.showdefinition && detail.personality) {
+        personality = detail.personality;
+        opening     = detail.first_message || '';
+      } else {
+        defHidden = true;
+      }
+    } catch { defHidden = true; }
+
     closeBrowse();
     openCharModal();
     document.getElementById('char-name').value        = name || '';
-    document.getElementById('char-personality').value = description || '';
-    document.getElementById('char-opening').value     = '';
-    document.getElementById('chub-source-link').style.display = 'none';
+    document.getElementById('char-personality').value = personality;
+    document.getElementById('char-opening').value     = opening;
+    const sourceLinkWrap   = document.getElementById('chub-source-link');
+    const sourceLinkAnchor = document.getElementById('chub-source-anchor');
+    if (defHidden) {
+      sourceLinkAnchor.href        = `https://janitorai.com/characters/${_id}`;
+      sourceLinkAnchor.textContent = 'janitorai.com';
+      sourceLinkWrap.firstChild.textContent = 'Definition hidden — view on ';
+      sourceLinkWrap.style.display = '';
+    } else {
+      sourceLinkWrap.style.display = 'none';
+    }
     if (avatarB64) {
       charAvatarData = avatarB64;
       renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, name);
     }
-    toast(`Imported "${name}" from J.AI — review and save! 🌸`, 'success');
+    const note = defHidden ? ' (definition hidden by author)' : '';
+    toast(`Imported "${name}" from J.AI${note} 🌸`, defHidden ? 'info' : 'success');
     btn.disabled    = false;
     btn.textContent = 'Imported ✓';
   } catch (err) {
