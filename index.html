@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=25" />
+  <link rel="stylesheet" href="style.css?v=27" />
 </head>
 <body>
 
@@ -90,6 +90,12 @@
         </svg>
         <p>No characters yet.<br/>Create one to get started.</p>
       </div>
+
+      <!-- ===== ROSIE — RP HELPER ===== -->
+      <button id="rosie-toggle" title="Ask Rosie">
+        <span class="rosie-avatar">🌸</span>
+        <span class="rosie-label">Rosie</span>
+      </button>
 
       <!-- ===== DAILY DISCOVERY (PC only) ===== -->
       <section id="daily-discovery">
@@ -485,11 +491,7 @@
     </div>
   </div>
 
-  <!-- ===== ROSIE — RP HELPER ===== -->
-  <button id="rosie-toggle" title="Ask Rosie">
-    <span class="rosie-avatar">🌸</span>
-    <span class="rosie-label">Rosie</span>
-  </button>
+  <!-- rosie-toggle moved into home-main (see above) -->
 
   <div id="rosie-panel">
     <div id="rosie-panel-header">
@@ -539,6 +541,11 @@
   <div class="modal-backdrop" id="char-profile-backdrop">
     <div class="modal char-profile-modal">
       <div class="modal-header">
+        <button class="icon-btn profile-back-btn" id="btn-back-char-profile" title="Back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+        </button>
         <h2>Character Profile</h2>
         <button class="icon-btn" id="btn-close-char-profile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -605,7 +612,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=86"></script>
+  <script src="script.js?v=87"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })

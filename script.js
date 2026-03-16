@@ -365,64 +365,106 @@ function scheduleAutoSave() {
 // ─────────────────────────────────────────────
 async function loadCharacters() {
   characters = await dbGetAll('characters');
-  renderCharacterGrid(characters);
+  const chats = await dbGetAll('chats');
+  const botCounts = {};
+  chats.forEach(c => {
+    botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
+  });
+  renderCharacterGrid(characters, botCounts);
 }
 
-function renderCharacterGrid(list) {
+function renderCharacterGrid(list, botCounts = {}) {
   const grid  = document.getElementById('character-grid');
   const empty = document.getElementById('empty-state');
   grid.innerHTML = '';
 
   if (list.length === 0) {
+    grid.classList.remove('is-list');
     empty.style.display = '';
     return;
   }
   empty.style.display = 'none';
 
+  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  grid.classList.toggle('is-list', isMobile);
+
   list.forEach(char => {
-    const card = document.createElement('div');
-    card.className = 'character-card';
-    card.dataset.id = char.id;
+    if (isMobile) {
+      const row = document.createElement('div');
+      row.className = 'char-row';
+      row.dataset.id = char.id;
 
-    const avatarEl = document.createElement('div');
-    avatarEl.className = 'card-avatar';
-    if (char.avatar) {
-      avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
+      const avatarEl = document.createElement('div');
+      avatarEl.className = 'char-row-avatar';
+      if (char.avatar) {
+        avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
+      } else {
+        avatarEl.textContent = initials(char.name);
+      }
+
+      const infoEl = document.createElement('div');
+      infoEl.className = 'char-row-info';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'char-row-name';
+      nameEl.textContent = char.name;
+
+      const countEl = document.createElement('div');
+      countEl.className = 'char-row-count';
+      const cnt = botCounts[char.id] || 0;
+      countEl.textContent = cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`;
+
+      infoEl.appendChild(nameEl);
+      infoEl.appendChild(countEl);
+
+      const continueBtn = document.createElement('button');
+      continueBtn.className = 'char-row-continue';
+      continueBtn.textContent = 'Continue';
+
+      nameEl.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
+      continueBtn.addEventListener('click', (e) => { e.stopPropagation(); openChat(char.id); });
+      row.addEventListener('click', () => openChat(char.id));
+
+      row.appendChild(avatarEl);
+      row.appendChild(infoEl);
+      row.appendChild(continueBtn);
+      grid.appendChild(row);
     } else {
-      avatarEl.textContent = initials(char.name);
+      const card = document.createElement('div');
+      card.className = 'character-card';
+      card.dataset.id = char.id;
+
+      const avatarEl = document.createElement('div');
+      avatarEl.className = 'card-avatar';
+      if (char.avatar) {
+        avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
+      } else {
+        avatarEl.textContent = initials(char.name);
+      }
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'card-name';
+      nameEl.textContent = char.name;
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'card-edit-btn';
+      editBtn.title = 'Edit character';
+      editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+      editBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharModal(char.id); });
+
+      const profileBtn = document.createElement('button');
+      profileBtn.className = 'card-profile-btn';
+      profileBtn.title = 'View profile';
+      profileBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+      profileBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
+
+      card.appendChild(editBtn);
+      card.appendChild(profileBtn);
+      card.appendChild(avatarEl);
+      card.appendChild(nameEl);
+      card.addEventListener('click', () => openChat(char.id));
+      grid.appendChild(card);
     }
-
-    const nameEl = document.createElement('div');
-    nameEl.className = 'card-name';
-    nameEl.textContent = char.name;
-
-    // edit button on card (top-right)
-    const editBtn = document.createElement('button');
-    editBtn.className = 'card-edit-btn';
-    editBtn.title = 'Edit character';
-    editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openCharModal(char.id);
-    });
-
-    // profile button on card (top-left)
-    const profileBtn = document.createElement('button');
-    profileBtn.className = 'card-profile-btn';
-    profileBtn.title = 'View profile';
-    profileBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
-    profileBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openCharProfile(char.id);
-    });
-
-    card.appendChild(editBtn);
-    card.appendChild(profileBtn);
-    card.appendChild(avatarEl);
-    card.appendChild(nameEl);
-
-    card.addEventListener('click', () => openChat(char.id));
-    grid.appendChild(card);
   });
 }
 
@@ -1462,6 +1504,7 @@ async function init() {
 
   // Character profile modal
   document.getElementById('btn-close-char-profile').addEventListener('click', closeCharProfile);
+  document.getElementById('btn-back-char-profile').addEventListener('click', closeCharProfile);
   document.getElementById('char-profile-backdrop').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCharProfile();
   });
@@ -1532,6 +1575,7 @@ async function init() {
   // ── Chat screen ──────────────────────────────
   document.getElementById('btn-back').addEventListener('click', () => {
     showScreen('home-screen');
+    loadCharacters();
     currentChar = null;
     currentChat = null;
   });

@@ -440,6 +440,76 @@ html, body {
 .character-card:hover .card-profile-btn { opacity: 1; }
 .card-profile-btn:hover { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent); }
 
+/* ---- compact character rows (mobile) ---- */
+.character-grid.is-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  grid-template-columns: unset;
+}
+.char-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.char-row:active { border-color: var(--accent); }
+.char-row-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.char-row-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.char-row-info { flex: 1; min-width: 0; }
+.char-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
+}
+.char-row-name:active { color: var(--accent); }
+.char-row-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.char-row-continue {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity var(--transition);
+}
+.char-row-continue:active { opacity: 0.8; }
+
+/* ---- profile back button (hidden on desktop, shown on mobile) ---- */
+.profile-back-btn { display: none; }
+
 /* ---- empty state ---- */
 .empty-state {
   position: absolute;
@@ -1210,6 +1280,27 @@ input[type="range"] {
   /* ---- safe area insets for notch / home bar ---- */
   .input-area { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
   .home-toolbar { padding-top: max(10px, env(safe-area-inset-top, 10px)); }
+
+  /* ---- Rosie: inline above discovery on mobile ---- */
+  #rosie-toggle {
+    position: static;
+    width: calc(100% - 24px);
+    margin: 4px 12px 0;
+    border-radius: var(--radius-lg);
+    justify-content: center;
+    box-shadow: none;
+  }
+
+  /* ---- character profile: full-page on mobile ---- */
+  #char-profile-backdrop { padding: 0; }
+  #char-profile-backdrop .modal {
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  #btn-close-char-profile { display: none; }
+  .profile-back-btn { display: flex; }
 }
 
 @media (max-width: 380px) {
@@ -1223,7 +1314,7 @@ input[type="range"] {
    ============================================================ */
 
 /* Hide Rosie when NOT on home screen (e.g. in chat) */
-#home-screen:not(.active) ~ #rosie-toggle,
+#home-screen:not(.active) #rosie-toggle,
 #home-screen:not(.active) ~ #rosie-panel {
   display: none !important;
 }
