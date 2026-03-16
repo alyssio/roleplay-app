@@ -1625,12 +1625,7 @@ async function init() {
   });
 
   // ── Search ───────────────────────────────────
-  document.getElementById('search-input').addEventListener('focus', () => {
-    if (window.matchMedia('(max-width: 600px)').matches) {
-      document.getElementById('home-main').scrollTop = 0;
-    }
-  });
-  document.getElementById('search-input').addEventListener('input', (e) => {
+document.getElementById('search-input').addEventListener('input', (e) => {
     const q = e.target.value.toLowerCase();
     const filtered = characters.filter(c => c.name.toLowerCase().includes(q));
     renderCharacterGrid(filtered);

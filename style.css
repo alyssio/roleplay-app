@@ -1249,8 +1249,6 @@ input[type="range"] {
   /* Use dynamic viewport height so chat doesn't get cut by mobile keyboard */
   html, body { height: 100dvh; }
   .screen { height: 100dvh; }
-  /* Home screen: lock to static vh so keyboard opening doesn't cause layout shift */
-  #home-screen { height: 100vh; }
 
   /* Header: title left, Rosie absolutely centered, icons right */
   .home-header { padding: 0 12px; position: relative; }
