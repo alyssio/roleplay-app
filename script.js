@@ -16,7 +16,7 @@ const MAINTENANCE_SINCE = null; // e.g. '2026-03-14T18:00:00Z'
 
 const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
 
-if (MAINTENANCE && isLocal) {
+if (MAINTENANCE) {
   document.getElementById('maintenance-screen').style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
@@ -1168,13 +1168,17 @@ async function streamAIResponse() {
     // Retry loop — up to 3 attempts if AI roleplays as the user
     const MAX_RETRIES = 3;
     let accumulated = '';
+    let slipped = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       accumulated = await fetchOnce();
-      if (!detectsUserRoleplay(accumulated)) break;
+      slipped = detectsUserRoleplay(accumulated);
+      if (!slipped) break;
       if (attempt < MAX_RETRIES) {
         typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
       }
     }
+    // All retries failed — scrub user mentions from the last response instead of retrying again
+    if (slipped) accumulated = scrubUserRoleplay(accumulated);
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
@@ -1213,10 +1217,31 @@ function detectsUserRoleplay(text) {
   return patterns.some(p => p.test(text));
 }
 
+function scrubUserRoleplay(text) {
+  const name = (settings.persona?.name || '').trim();
+  const escaped = name ? name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+
+  const lines = text.split('\n');
+  const clean = lines.filter(line => {
+    const t = line.trim();
+    if (!t) return true;
+    if (/^\*You\s+\w/i.test(t)) return false;
+    if (/^\*You\b/i.test(t)) return false;
+    if (/^You:\s/i.test(t)) return false;
+    if (escaped) {
+      if (new RegExp(`^\\*${escaped}\\s+\\w`, 'i').test(t)) return false;
+      if (new RegExp(`^${escaped}:\\s`, 'i').test(t)) return false;
+    }
+    return true;
+  });
+
+  return clean.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += '\n\n---\nIMPORTANT: You only ever write for {{char}}. Never write dialogue, inner thoughts, or actions for {{user}} — the user controls their own character. Stay in your role only.';
+  systemContent += fillPlaceholders('\n\n---\nIMPORTANT: You only ever write for {{char}}. Never write dialogue, inner thoughts, or actions for {{user}} — the user controls their own character. Stay in your role only.');
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
@@ -1749,7 +1774,7 @@ document.getElementById('search-input').addEventListener('input', (e) => {
         document.querySelectorAll(`.discover-card[data-path="${path}"]`).forEach(el => el.remove());
       });
     } catch { /* silent */ }
-  }, 2000);
+  }, 15000);
 
   // Re-load discover if screen crosses the mobile/PC boundary (e.g. browser resize, DevTools)
   mobileQuery.addEventListener('change', () => {
@@ -2982,7 +3007,7 @@ async function syncJaiDefinitions() {
 
   // Refresh characters list
   characters = await dbGetAll('characters');
-  renderCharList();
+  renderCharacterGrid(characters);
 }
 
 document.getElementById('btn-sync-jai').addEventListener('click', syncJaiDefinitions);
