@@ -430,6 +430,7 @@ function renderCharacterGrid(list) {
 // CHARACTER MODAL (create / edit)
 // ─────────────────────────────────────────────
 let charAvatarData = null; // base64 or null for current edit
+let pendingJaiTags = [];   // tags from J.AI import, stored until save
 let editingCharId  = null;
 
 function openCharModal(charId = null) {
@@ -439,6 +440,7 @@ function openCharModal(charId = null) {
 
   editingCharId  = charId;
   charAvatarData = null;
+  pendingJaiTags = [];
 
   if (charId) {
     const char = characters.find(c => c.id === charId);
@@ -571,7 +573,9 @@ async function saveCharacter() {
     personality,
     openingMessage: openingMsg,
     spotifyUrl:     spotifyUrl || null,
+    tags:           pendingJaiTags.length ? pendingJaiTags : undefined,
   };
+  pendingJaiTags = [];
 
   await dbPut('characters', char);
 
@@ -2029,7 +2033,7 @@ function _mapJaiChar(c) {
       d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' ');
       return d.textContent.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim();
     })(),
-    topics:     [],
+    topics:     (c.tags || []).map(t => t.slug).filter(Boolean),
     _jai:       true,
     _jaiAvatar: `https://ella.janitorai.com/bot-avatars/${c.avatar}`,
     _jaiId:     c.id,
@@ -2758,11 +2762,15 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     let personality = description || '';
     let opening     = '';
     let defHidden   = false;
+    let jaiTags     = [];
     try {
       const detail = await fetch(`https://janitorai.com/hampter/characters/${_id}`).then(r => r.json());
-      if (detail.showdefinition && detail.personality) {
-        personality = detail.personality;
+      jaiTags        = (detail.tags || []).map(t => t.slug).filter(Boolean);
+      pendingJaiTags = jaiTags;
+      if (detail.showdefinition === true) {
+        personality = detail.personality || description || '';
         opening     = detail.first_message || '';
+        defHidden   = false;
       } else {
         defHidden = true;
       }
@@ -2797,6 +2805,50 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     btn.textContent = 'Import';
   }
 }
+
+// ── Sync J.AI definitions ─────────────────────────────────────────────────────
+async function syncJaiDefinitions() {
+  const btn = document.getElementById('btn-sync-jai');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+
+  const allChars = await dbGetAll('characters');
+  let updated = 0, hidden = 0, notFound = 0;
+
+  for (const char of allChars) {
+    if (!char.name) continue;
+    // Skip chars that already have a real definition (long personality)
+    if ((char.personality || '').length > 500) continue;
+
+    try {
+      const res  = await fetch(`https://janitorai.com/hampter/characters?page=1&mode=sfw&sort=popular&search=${encodeURIComponent(char.name)}`).then(r => r.json());
+      const match = (res.data || []).find(c => c.name.trim().toLowerCase() === char.name.trim().toLowerCase());
+      if (!match) { notFound++; continue; }
+
+      const detail = await fetch(`https://janitorai.com/hampter/characters/${match.id}`).then(r => r.json());
+      const jTags = (detail.tags || []).map(t => t.slug).filter(Boolean);
+      if (detail.showdefinition === true && detail.personality) {
+        char.personality = detail.personality;
+        if (!char.openingMessage && detail.first_message) char.openingMessage = detail.first_message;
+        if (jTags.length) char.tags = jTags;
+        await dbPut('characters', char);
+        updated++;
+      } else {
+        hidden++;
+      }
+    } catch { notFound++; }
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Sync J.AI Definitions';
+  toast(`J.AI sync done — ${updated} updated, ${hidden} still hidden, ${notFound} not on J.AI`, updated > 0 ? 'success' : 'info');
+
+  // Refresh characters list
+  characters = await dbGetAll('characters');
+  renderCharList();
+}
+
+document.getElementById('btn-sync-jai').addEventListener('click', syncJaiDefinitions);
 
 // Save current chat whenever the tab is hidden or closed
 document.addEventListener('visibilitychange', () => {
