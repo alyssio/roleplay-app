@@ -293,7 +293,7 @@ function populateSettingsForm() {
   document.getElementById('temp-display').textContent  = settings.temperature ?? 0.8;
   document.getElementById('persona-name').value        = settings.persona?.name        || '';
   document.getElementById('persona-desc').value        = settings.persona?.description || '';
-  document.getElementById('ooc-enabled').checked       = settings.oocEnabled ?? false;
+  document.getElementById('ooc-enabled').checked       = settings.oocEnabled ?? true;
 
   updateProviderUI(provider);
 
@@ -1137,6 +1137,7 @@ async function streamAIResponse() {
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
+  systemContent += '\n\n---\nIMPORTANT: You only ever write for {{char}}. Never write dialogue, inner thoughts, or actions for {{user}} — the user controls their own character. Stay in your role only.';
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
@@ -2844,14 +2845,10 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     document.getElementById('char-opening').value     = opening;
     const sourceLinkWrap   = document.getElementById('chub-source-link');
     const sourceLinkAnchor = document.getElementById('chub-source-anchor');
-    if (defHidden) {
-      sourceLinkAnchor.href        = `https://janitorai.com/characters/${_id}`;
-      sourceLinkAnchor.textContent = 'janitorai.com';
-      sourceLinkWrap.firstChild.textContent = 'Definition hidden — view on ';
-      sourceLinkWrap.style.display = '';
-    } else {
-      sourceLinkWrap.style.display = 'none';
-    }
+    sourceLinkAnchor.href        = `https://janitorai.com/characters/${_id}`;
+    sourceLinkAnchor.textContent = 'janitorai.com';
+    sourceLinkWrap.firstChild.textContent = defHidden ? 'Definition hidden — view on ' : 'View on ';
+    sourceLinkWrap.style.display = '';
     if (avatarB64) {
       charAvatarData = avatarB64;
       renderAvatarPreview(document.getElementById('char-avatar-preview'), avatarB64, name);

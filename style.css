@@ -1344,7 +1344,7 @@ input[type="range"] {
     height: 100%;
     border-radius: 0;
   }
-  #btn-close-char-profile { display: none; }
+  #btn-close-char-profile { visibility: hidden; }
   .profile-back-btn { display: flex; }
 }
 
