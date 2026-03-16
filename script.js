@@ -1280,7 +1280,7 @@ function scrubUserRoleplay(text) {
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += fillPlaceholders('\n\n---\nIMPORTANT: You only ever write for {{char}}. Never write dialogue, inner thoughts, or actions for {{user}} — the user controls their own character. Stay in your role only.');
+  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.');
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
@@ -1289,7 +1289,7 @@ function buildAPIMessages() {
 
   // OOC instructions
   if (settings.oocEnabled) {
-    systemContent += `\n\n---\nOOC COMMANDS: The user may send out-of-character messages using the format [OOC: message]. When you see this, immediately step fully outside your character and respond as the author/narrator of this story. Answer the OOC message thoroughly and in complete detail — treat it as a direct instruction or question you must fully address. Do not brush over it or give short answers. If asked about the character's behavior, feelings, or reactions in a scenario, explore it deeply. You may wrap your OOC reply in [OOC: ...] to keep it distinct. After addressing the OOC message, return naturally to the roleplay only if the context calls for it.`;
+    systemContent += `\n\nIf the user sends [OOC: ...], step out of character briefly to address it, then continue the roleplay. Keep it natural — no need to announce rules or list what you're doing. Just handle it and move on.`;
   }
 
   const messages = [{ role: 'system', content: systemContent }];
