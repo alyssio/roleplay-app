@@ -473,7 +473,6 @@ function renderCharacterGrid(list, botCounts = {}) {
 
       nameEl.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
       continueBtn.addEventListener('click', (e) => { e.stopPropagation(); openChat(char.id); });
-      row.addEventListener('click', () => openChat(char.id));
 
       row.appendChild(avatarEl);
       row.appendChild(infoEl);
@@ -488,6 +487,8 @@ function renderCharacterGrid(list, botCounts = {}) {
       delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        e.preventDefault();
+        _openSwipeRow = null;
         await dbDelete('chats', char.id);
         countEl.textContent = 'No messages yet';
         snapRow(row, 0);
@@ -864,6 +865,8 @@ async function openChat(charId, usePersona = true) {
 
   updateChatHeader();
   showScreen('chat-screen');
+  sessionStorage.setItem('activeChat', JSON.stringify({ charId, usePersona }));
+  history.pushState({ screen: 'chat' }, '', location.pathname);
   renderMessages();
   scrollToBottom(false);
   document.getElementById('message-input').focus();
@@ -1415,7 +1418,15 @@ async function init() {
   await loadCharacters();
 
   applyChatBg();
-  showScreen('home-screen');
+
+  // Restore last chat if the page was refreshed mid-chat
+  const savedChat = (() => { try { return JSON.parse(sessionStorage.getItem('activeChat')); } catch { return null; } })();
+  if (savedChat?.charId && characters.find(c => c.id === savedChat.charId)) {
+    await openChat(savedChat.charId, savedChat.usePersona ?? true);
+  } else {
+    showScreen('home-screen');
+    history.replaceState({ screen: 'home' }, '', location.pathname);
+  }
 
   // ── Settings panel ──────────────────────────
   document.getElementById('btn-open-settings').addEventListener('click', openSettings);
@@ -1696,10 +1707,18 @@ async function init() {
 
   // ── Chat screen ──────────────────────────────
   document.getElementById('btn-back').addEventListener('click', () => {
+    sessionStorage.removeItem('activeChat');
     showScreen('home-screen');
     loadCharacters();
     currentChar = null;
     currentChat = null;
+  });
+
+  // Browser back button: if in chat, stay in chat instead of leaving
+  window.addEventListener('popstate', () => {
+    if (document.getElementById('chat-screen').classList.contains('active')) {
+      history.pushState({ screen: 'chat' }, '', location.pathname);
+    }
   });
 
   document.getElementById('btn-music').addEventListener('click', toggleMusicPlayer);
