@@ -315,8 +315,8 @@ html, body {
 .discover-tag {
   font-size: 10px;
   color: var(--accent);
-  background: rgba(255, 45, 120, 0.12);
-  border: 1px solid rgba(255, 45, 120, 0.3);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-glow);
   border-radius: var(--radius-full);
   padding: 1px 6px;
 }
@@ -1160,8 +1160,9 @@ input[type="range"] {
   #daily-discovery { padding: 10px 12px 20px; }
   .discover-title  { font-size: 1rem; }
   .discover-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .discover-card-tagline,
-  .discover-card-tags { display: none; }
+  .discover-card-tagline { display: none; }
+  .discover-card-tags { gap: 2px; margin-top: 2px; }
+  .discover-tag { font-size: 9px; padding: 1px 5px; }
   .discover-card-name { font-size: 0.78rem; }
   .discover-import-btn,
   .discover-hide-btn  { font-size: 0.72rem; padding: 3px 7px; }
