@@ -373,19 +373,30 @@ async function loadCharacters() {
   renderCharacterGrid(characters, botCounts);
 }
 
+function openCharSheet() {
+  document.getElementById('char-sheet').classList.add('open');
+  document.getElementById('char-sheet-backdrop').classList.add('open');
+}
+function closeCharSheet() {
+  document.getElementById('char-sheet').classList.remove('open');
+  document.getElementById('char-sheet-backdrop').classList.remove('open');
+}
+
 function renderCharacterGrid(list, botCounts = {}) {
-  const grid  = document.getElementById('character-grid');
+  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  const grid  = isMobile ? document.getElementById('char-sheet-list') : document.getElementById('character-grid');
   const empty = document.getElementById('empty-state');
   grid.innerHTML = '';
 
-  if (list.length === 0) {
-    grid.classList.remove('is-list');
-    empty.style.display = '';
-    return;
+  if (!isMobile) {
+    if (list.length === 0) {
+      grid.classList.remove('is-list');
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
   }
-  empty.style.display = 'none';
 
-  const isMobile = window.matchMedia('(max-width: 600px)').matches;
   grid.classList.toggle('is-list', isMobile);
 
   list.forEach(char => {
@@ -773,6 +784,7 @@ function updateChatBgThumb() {
 // CHAT — OPEN / LOAD
 // ─────────────────────────────────────────────
 async function openChat(charId, usePersona = true) {
+  closeCharSheet();
   chatUsePersona = usePersona;
   currentChar = characters.find(c => c.id === charId);
   if (!currentChar) return;
@@ -1505,6 +1517,11 @@ async function init() {
   // Character profile modal
   document.getElementById('btn-close-char-profile').addEventListener('click', closeCharProfile);
   document.getElementById('btn-back-char-profile').addEventListener('click', closeCharProfile);
+
+  // Character sheet (mobile)
+  document.getElementById('btn-open-chars').addEventListener('click', openCharSheet);
+  document.getElementById('btn-close-chars').addEventListener('click', closeCharSheet);
+  document.getElementById('char-sheet-backdrop').addEventListener('click', closeCharSheet);
   document.getElementById('char-profile-backdrop').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCharProfile();
   });
@@ -2432,7 +2449,7 @@ async function loadDailyDiscovery() {
   try {
     const params = new URLSearchParams({
       page:         dailyPage,
-      page_size:    mobileQuery.matches ? 12 : 48,
+      page_size:    mobileQuery.matches ? 18 : 48,
       content_type: 'characters',
       nsfw:         'true',
       sort:         'rating_count',

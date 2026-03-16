@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=27" />
+  <link rel="stylesheet" href="style.css?v=28" />
 </head>
 <body>
 
@@ -68,6 +68,13 @@
         </svg>
         <span class="btn-label">Browse</span>
       </button>
+      <button class="icon-btn btn-open-chars" id="btn-open-chars" title="My Characters">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M2 21c0-4 3.1-7 7-7s7 3 7 7"/>
+          <path d="M19 8v6M22 11h-6"/>
+        </svg>
+      </button>
       <button class="btn-primary" id="btn-new-character">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M12 5v14M5 12h14"/>
@@ -91,12 +98,6 @@
         <p>No characters yet.<br/>Create one to get started.</p>
       </div>
 
-      <!-- ===== ROSIE — RP HELPER ===== -->
-      <button id="rosie-toggle" title="Ask Rosie">
-        <span class="rosie-avatar">🌸</span>
-        <span class="rosie-label">Rosie</span>
-      </button>
-
       <!-- ===== DAILY DISCOVERY (PC only) ===== -->
       <section id="daily-discovery">
         <div class="discover-header">
@@ -107,6 +108,20 @@
           <div class="browse-loading">Loading…</div>
         </div>
       </section>
+    </div>
+
+    <!-- ===== CHARACTER SHEET (mobile) ===== -->
+    <div id="char-sheet-backdrop"></div>
+    <div id="char-sheet">
+      <div id="char-sheet-header">
+        <h2>My Characters</h2>
+        <button class="icon-btn" id="btn-close-chars">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="char-sheet-list"></div>
     </div>
   </div>
 
@@ -491,7 +506,11 @@
     </div>
   </div>
 
-  <!-- rosie-toggle moved into home-main (see above) -->
+  <!-- ===== ROSIE — RP HELPER ===== -->
+  <button id="rosie-toggle" title="Ask Rosie">
+    <span class="rosie-avatar">🌸</span>
+    <span class="rosie-label">Rosie</span>
+  </button>
 
   <div id="rosie-panel">
     <div id="rosie-panel-header">
@@ -612,7 +631,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=87"></script>
+  <script src="script.js?v=88"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })

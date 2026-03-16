@@ -507,6 +507,54 @@ html, body {
 }
 .char-row-continue:active { opacity: 0.8; }
 
+/* ---- character sheet (mobile bottom sheet) ---- */
+#char-sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(3px);
+  z-index: 190;
+}
+#char-sheet-backdrop.open { display: block; }
+#char-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 82dvh;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 195;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+#char-sheet.open { transform: translateY(0); }
+#char-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#char-sheet-header h2 { font-size: 1rem; font-weight: 600; }
+#char-sheet-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 20px;
+}
+
+/* ---- btn-open-chars: only visible on mobile ---- */
+.btn-open-chars { display: none; }
+
 /* ---- profile back button (hidden on desktop, shown on mobile) ---- */
 .profile-back-btn { display: none; }
 
@@ -1281,15 +1329,9 @@ input[type="range"] {
   .input-area { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
   .home-toolbar { padding-top: max(10px, env(safe-area-inset-top, 10px)); }
 
-  /* ---- Rosie: inline above discovery on mobile ---- */
-  #rosie-toggle {
-    position: static;
-    width: calc(100% - 24px);
-    margin: 4px 12px 0;
-    border-radius: var(--radius-lg);
-    justify-content: center;
-    box-shadow: none;
-  }
+  /* ---- character grid: hidden on mobile (lives in char-sheet instead) ---- */
+  #character-grid, #empty-state { display: none !important; }
+  .btn-open-chars { display: flex; }
 
   /* ---- character profile: full-page on mobile ---- */
   #char-profile-backdrop { padding: 0; }
@@ -1314,7 +1356,7 @@ input[type="range"] {
    ============================================================ */
 
 /* Hide Rosie when NOT on home screen (e.g. in chat) */
-#home-screen:not(.active) #rosie-toggle,
+#home-screen:not(.active) ~ #rosie-toggle,
 #home-screen:not(.active) ~ #rosie-panel {
   display: none !important;
 }
