@@ -1714,10 +1714,14 @@ async function init() {
     currentChat = null;
   });
 
-  // Browser back button: if in chat, stay in chat instead of leaving
+  // Browser back button: go home from chat
   window.addEventListener('popstate', () => {
     if (document.getElementById('chat-screen').classList.contains('active')) {
-      history.pushState({ screen: 'chat' }, '', location.pathname);
+      sessionStorage.removeItem('activeChat');
+      showScreen('home-screen');
+      loadCharacters();
+      currentChar = null;
+      currentChat = null;
     }
   });
 
