@@ -315,8 +315,8 @@ html, body {
 .discover-tag {
   font-size: 10px;
   color: var(--accent);
-  background: var(--accent-subtle);
-  border: 1px solid var(--accent-glow);
+  background: rgba(255, 45, 120, 0.12);
+  border: 1px solid rgba(255, 45, 120, 0.3);
   border-radius: var(--radius-full);
   padding: 1px 6px;
 }
