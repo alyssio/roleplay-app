@@ -2033,7 +2033,7 @@ function _mapJaiChar(c) {
       d.innerHTML = (c.description || '').replace(/<[^>]*>/g, ' ');
       return d.textContent.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim();
     })(),
-    topics:     (c.tags || []).map(t => t.slug).filter(Boolean),
+    topics:     (() => { const all = (c.tags || []).map(t => t.slug).filter(Boolean); return slugs.includes('mlm') ? ['mlm', ...all.filter(s => s !== 'mlm')] : all; })(),
     _jai:       true,
     _jaiAvatar: `https://ella.janitorai.com/bot-avatars/${c.avatar}`,
     _jaiId:     c.id,
