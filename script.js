@@ -2658,16 +2658,18 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Interleave up to 6 J.AI cards per page (no wrap — once exhausted, stop showing JAI)
-    const seenPaths  = new Set();
-    const dedup = n => { if (seenPaths.has(n.fullPath)) return false; seenPaths.add(n.fullPath); return true; };
-
-    const allNodes    = rawNodes.filter(filterNode).filter(dedup);
+    // Interleave up to 6 J.AI cards per page, rotating with wrap so pages never go bare
+    const seenChubPaths = new Set();
+    const allNodes    = rawNodes.filter(filterNode).filter(n => {
+      if (seenChubPaths.has(n.fullPath)) return false;
+      seenChubPaths.add(n.fullPath);
+      return true;
+    });
     const filteredJai = jaiNodes.filter(filterNode);
     if (filteredJai.length) {
-      const offset   = (dailyPage - 1) * 6;
-      const jaiSlice = filteredJai.slice(offset, offset + 6);  // no modulo — returns [] once exhausted
-      jaiSlice.filter(dedup).forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
+      const offset   = ((dailyPage - 1) * 6) % filteredJai.length;
+      const jaiSlice = filteredJai.slice(offset, offset + 6);
+      jaiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
 
