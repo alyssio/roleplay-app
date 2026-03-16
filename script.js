@@ -490,8 +490,15 @@ function renderCharacterGrid(list, botCounts = {}) {
         e.preventDefault();
         _openSwipeRow = null;
         await dbDelete('chats', char.id);
-        countEl.textContent = 'No messages yet';
-        snapRow(row, 0);
+        // Animate the whole row out then remove it
+        wrap.style.transition = 'max-height 0.25s ease, opacity 0.25s ease';
+        wrap.style.overflow   = 'hidden';
+        wrap.style.maxHeight  = wrap.offsetHeight + 'px';
+        requestAnimationFrame(() => {
+          wrap.style.maxHeight = '0';
+          wrap.style.opacity   = '0';
+        });
+        wrap.addEventListener('transitionend', () => wrap.remove(), { once: true });
       });
 
       wrap.appendChild(delBtn);
@@ -2651,13 +2658,16 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Interleave up to 6 J.AI cards per page, rotating which ones show per page
-    const allNodes = [...rawNodes.filter(filterNode)];
+    // Interleave up to 6 J.AI cards per page (no wrap — once exhausted, stop showing JAI)
+    const seenPaths  = new Set();
+    const dedup = n => { if (seenPaths.has(n.fullPath)) return false; seenPaths.add(n.fullPath); return true; };
+
+    const allNodes    = rawNodes.filter(filterNode).filter(dedup);
     const filteredJai = jaiNodes.filter(filterNode);
     if (filteredJai.length) {
-      const offset = ((dailyPage - 1) * 6) % filteredJai.length;
-      const jaiSlice = filteredJai.slice(offset, offset + 6);
-      jaiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
+      const offset   = (dailyPage - 1) * 6;
+      const jaiSlice = filteredJai.slice(offset, offset + 6);  // no modulo — returns [] once exhausted
+      jaiSlice.filter(dedup).forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
 
@@ -2948,9 +2958,12 @@ async function importChubChar(fullPath, name, btn) {
     const chubLinkWrap  = document.getElementById('chub-source-link');
     const chubLinkAnchor = document.getElementById('chub-source-anchor');
     openingField.value = openingMsg;
-    if (!openingMsg) {
-      openingField.placeholder = '⚠️ no opening message found on chub — add one manually';
-      chubLinkAnchor.href = `https://chub.ai/characters/${fullPath}`;
+    if (!openingMsg || !personality) {
+      openingField.placeholder = openingMsg ? 'First message the character sends when a new chat begins (optional).' : '⚠️ no opening message found on chub — add one manually';
+      if (!personality) document.getElementById('char-personality').placeholder = '⚠️ no personality found on chub — view the character page and fill this in manually';
+      chubLinkAnchor.href        = `https://chub.ai/characters/${fullPath}`;
+      chubLinkAnchor.textContent = 'chub.ai';
+      chubLinkWrap.firstChild.textContent = 'Couldn\'t load full data — view on ';
       chubLinkWrap.style.display = '';
     } else {
       openingField.placeholder = 'First message the character sends when a new chat begins (optional).';
