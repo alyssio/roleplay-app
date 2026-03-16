@@ -1249,6 +1249,8 @@ input[type="range"] {
   /* Use dynamic viewport height so chat doesn't get cut by mobile keyboard */
   html, body { height: 100dvh; }
   .screen { height: 100dvh; }
+  /* Home screen: let it scroll freely — browser chrome doesn't cause a dead gap */
+  #home-screen { height: auto; min-height: 100dvh; overflow-y: auto; }
 
   /* Header: title left, Rosie absolutely centered, icons right */
   .home-header { padding: 0 12px; position: relative; }
@@ -1283,7 +1285,7 @@ input[type="range"] {
   }
 
   /* ---- discover section (mobile: 2×2 grid) ---- */
-  #daily-discovery { padding: 10px 12px 20px; }
+  #daily-discovery { padding: 10px 12px 20px; border-top: none; }
   .discover-title  { font-size: 1rem; }
   .discover-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .discover-card-tagline { display: none; }
