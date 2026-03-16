@@ -93,8 +93,9 @@ html, body {
   overflow: visible;
 }
 
-.home-header-left { flex: 1; min-width: 0; }
-.home-header-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.home-header-left  { flex: 1; min-width: 0; }
+.home-header-center { display: none; flex-shrink: 0; align-items: center; justify-content: center; }
+.home-header-right  { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 .app-title {
   font-size: 1.3rem;
@@ -1316,14 +1317,23 @@ input[type="range"] {
   /* ---- settings panel ---- */
   .settings-panel { width: 100vw; }
 
-  /* ---- Rosie panel: centered on mobile ---- */
-  #rosie-panel {
-    left: 16px;
-    right: 16px;
-    width: auto;
-    max-width: none;
-    bottom: 90px;
+  /* ---- Rosie: header center on mobile ---- */
+  .home-header-center { display: flex; }
+  .home-header-right  { flex: 1; justify-content: flex-end; }
+  #rosie-toggle {
+    position: static;
+    padding: 5px 12px 5px 8px;
+    box-shadow: 0 2px 10px var(--accent-glow);
   }
+  #rosie-toggle:hover { transform: none; }
+  #rosie-panel {
+    top: calc(var(--header-h) + 8px);
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px) scale(0.97);
+    max-width: calc(100vw - 32px);
+  }
+  #rosie-panel.open { transform: translateX(-50%) translateY(0) scale(1); }
 
   /* ---- safe area insets for notch / home bar ---- */
   .input-area { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
@@ -1355,8 +1365,7 @@ input[type="range"] {
    ROSIE — RP HELPER
    ============================================================ */
 
-/* Hide Rosie when NOT on home screen (e.g. in chat) */
-#home-screen:not(.active) ~ #rosie-toggle,
+/* Hide Rosie panel when NOT on home screen (e.g. in chat) */
 #home-screen:not(.active) ~ #rosie-panel {
   display: none !important;
 }
@@ -1389,6 +1398,7 @@ input[type="range"] {
   position: fixed;
   bottom: 80px;
   left: 24px;
+  transform: translateY(12px) scale(0.97);
   width: 340px;
   max-width: calc(100vw - 48px);
   max-height: 520px;
@@ -1399,7 +1409,6 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   z-index: 299;
-  transform: translateY(12px) scale(0.97);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.2s ease, opacity 0.2s ease;
