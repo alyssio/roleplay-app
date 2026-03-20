@@ -1781,24 +1781,8 @@ async function init() {
 
   // Send
   document.getElementById('send-btn').addEventListener('click', sendMessage);
-  let _enterPending = false;
-  document.getElementById('message-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      _enterPending = true;
-      sendMessage();
-    }
-  });
   document.getElementById('message-input').addEventListener('input', (e) => {
-    const input = e.target;
-    if (_enterPending) {
-      _enterPending = false;
-      // iOS may insert a newline despite preventDefault — strip it
-      if (input.value.endsWith('\n')) input.value = input.value.slice(0, -1);
-      resizeTextarea(input);
-      return;
-    }
-    resizeTextarea(input);
+    resizeTextarea(e.target);
   });
 
   // ── Edit message modal ───────────────────────
