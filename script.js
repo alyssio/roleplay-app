@@ -2246,9 +2246,10 @@ let browseLoading = false;
 let browseHasMore = false;
 let browseNodes   = [];
 
-let dailyPage    = 1;
-let dailyHasMore = false;
-let dailyLoading = false;
+let dailyPage        = 1;
+let dailyHasMore     = false;
+let dailyLoading     = false;
+let seenDiscoverPaths = new Set(); // accumulates across pages so bots never repeat
 
 let _jaiCache   = null;
 let _jaiCacheAt = 0;
@@ -2585,6 +2586,7 @@ async function saveHiddenBots(hiddenSet) {
 
 function loadDiscoverState() {
   const today = new Date().toISOString().slice(0, 10);
+  seenDiscoverPaths = new Set(); // fresh session = fresh slate
   try {
     const saved = JSON.parse(localStorage.getItem('discover-state') || 'null');
     if (saved && saved.date === today) {
@@ -2652,17 +2654,17 @@ async function loadDailyDiscovery() {
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
-    // Interleave up to 6 J.AI cards per page, rotating with wrap so pages never go bare
-    const seenChubPaths = new Set();
-    const allNodes    = rawNodes.filter(filterNode).filter(n => {
-      if (seenChubPaths.has(n.fullPath)) return false;
-      seenChubPaths.add(n.fullPath);
+    // Accumulate seen paths so bots never repeat across pages
+    const allNodes = rawNodes.filter(filterNode).filter(n => {
+      if (seenDiscoverPaths.has(n.fullPath)) return false;
+      seenDiscoverPaths.add(n.fullPath);
       return true;
     });
-    const filteredJai = jaiNodes.filter(filterNode);
+    // J.AI: only show cards not yet seen; no wrapping
+    const filteredJai = jaiNodes.filter(filterNode).filter(n => !seenDiscoverPaths.has(n.fullPath));
     if (filteredJai.length) {
-      const offset   = ((dailyPage - 1) * 6) % filteredJai.length;
-      const jaiSlice = filteredJai.slice(offset, offset + 6);
+      const jaiSlice = filteredJai.slice(0, 6);
+      jaiSlice.forEach(n => seenDiscoverPaths.add(n.fullPath));
       jaiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
