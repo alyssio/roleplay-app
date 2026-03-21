@@ -2856,6 +2856,16 @@ function renderDiscoverPagination() {
   el.appendChild(prevBtn);
   el.appendChild(info);
   el.appendChild(nextBtn);
+
+  const bottom = document.getElementById('discover-pagination-bottom');
+  bottom.innerHTML = '';
+  bottom.appendChild(el.cloneNode(true));
+  bottom.querySelectorAll('button')[0]?.addEventListener('click', async () => {
+    if (dailyPage > 1) { dailyPage--; await loadDailyDiscovery(); }
+  });
+  bottom.querySelectorAll('button')[1]?.addEventListener('click', async () => {
+    if (dailyHasMore) { dailyPage++; await loadDailyDiscovery(); }
+  });
 }
 
 function parsePngCharaData(buffer) {
