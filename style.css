@@ -189,6 +189,11 @@ html, body {
   gap: 8px;
 }
 
+#discover-pagination-bottom {
+  justify-content: center;
+  padding: 10px 0;
+}
+
 .discover-page-info {
   font-size: 13px;
   color: var(--text-muted);

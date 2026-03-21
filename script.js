@@ -2626,7 +2626,6 @@ async function loadDailyDiscovery() {
   const grid = document.getElementById('discover-grid');
   const pag  = document.getElementById('discover-pagination');
   grid.innerHTML = '<div class="browse-loading">Loading…</div>';
-  pag.innerHTML  = '';
 
   try {
     const params = new URLSearchParams({
