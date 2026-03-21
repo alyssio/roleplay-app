@@ -2623,9 +2623,11 @@ async function loadDailyDiscovery() {
   dailyLoading = true;
   saveDiscoverState();
 
-  const grid = document.getElementById('discover-grid');
-  const pag  = document.getElementById('discover-pagination');
-  grid.innerHTML = '<div class="browse-loading">Loading…</div>';
+  const grid   = document.getElementById('discover-grid');
+  const pag    = document.getElementById('discover-pagination');
+  const pagBot = document.getElementById('discover-pagination-bottom');
+  grid.innerHTML   = '<div class="browse-loading">Loading…</div>';
+  pagBot.innerHTML = '';
 
   try {
     const params = new URLSearchParams({
