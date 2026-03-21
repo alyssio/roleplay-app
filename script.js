@@ -2278,9 +2278,16 @@ function _mapJaiChar(c) {
 
 async function fetchJaiChars() {
   if (_jaiCache && Date.now() - _jaiCacheAt < JAI_TTL) return _jaiCache;
-  const r    = await fetch('https://janitorai.com/hampter/characters?page=1&mode=nsfw&sort=popular');
-  const data = await r.json();
-  const chars = (data.data || []).map(_mapJaiChar).filter(Boolean);
+  const pages = await Promise.allSettled(
+    [1, 2, 3, 4, 5].map(p =>
+      fetch(`https://janitorai.com/hampter/characters?page=${p}&mode=nsfw&sort=popular`)
+        .then(r => r.json())
+    )
+  );
+  const seen  = new Set();
+  const chars = pages.flatMap(r => r.status === 'fulfilled' ? (r.value.data || []) : [])
+    .map(_mapJaiChar).filter(Boolean)
+    .filter(c => { if (seen.has(c._jaiId)) return false; seen.add(c._jaiId); return true; });
   for (let i = chars.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [chars[i], chars[j]] = [chars[j], chars[i]];
