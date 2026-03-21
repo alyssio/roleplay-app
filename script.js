@@ -2459,7 +2459,7 @@ function showBrowseProfile(node) {
   const avatarEl = document.createElement('div');
   avatarEl.className = 'bprofile-avatar';
   const img = document.createElement('img');
-  img.src = `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+  img.src = node._jai ? node._jaiAvatar : `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
   img.alt = node.name || '';
   img.onerror = () => { avatarEl.textContent = initials(node.name); };
   avatarEl.appendChild(img);
@@ -2790,7 +2790,7 @@ function renderDiscoverGrid(nodes, grid) {
     card.appendChild(body);
 
     card.addEventListener('click', (e) => {
-      if (!e.target.closest('.discover-import-btn') && !node._jai) {
+      if (!e.target.closest('.discover-import-btn') && !e.target.closest('.discover-hide-btn')) {
         openBrowse();
         showBrowseProfile(node);
       }
