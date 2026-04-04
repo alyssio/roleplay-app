@@ -178,19 +178,29 @@
       <!-- messages injected here -->
     </div>
 
-    <div class="input-area">
-      <textarea
-        id="message-input"
-        placeholder="Type a message…"
-        rows="1"
-        autocomplete="off"
-      ></textarea>
-      <button class="send-btn" id="send-btn" title="Send">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <line x1="22" y1="2" x2="11" y2="13"/>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
-      </button>
+    <div class="input-frame">
+      <!-- decorative elements -->
+      <div class="frame-cloud frame-cloud--bl"></div>
+      <div class="frame-cloud frame-cloud--br"></div>
+      <div class="frame-moon">&#127769;</div>
+      <div class="frame-star frame-star--1">&#10022;</div>
+      <div class="frame-star frame-star--2">&#10022;</div>
+      <div class="frame-star frame-star--3">&#10022;</div>
+
+      <div class="input-area">
+        <textarea
+          id="message-input"
+          placeholder="Type a message…"
+          rows="1"
+          autocomplete="off"
+        ></textarea>
+        <button class="send-btn" id="send-btn" title="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 
