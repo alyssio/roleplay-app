@@ -505,7 +505,9 @@ function renderCharacterGrid(list, botCounts = {}) {
         if (delBtn.dataset.deleting) return;
         delBtn.dataset.deleting = '1';
         _openSwipeRow = null;
+        await dbDelete('characters', char.id);
         await dbDelete('chats', char.id);
+        characters = characters.filter(c => c.id !== char.id);
         // Animate the whole row out then remove it
         wrap.style.transition = 'max-height 0.25s ease, opacity 0.25s ease';
         wrap.style.overflow   = 'hidden';
