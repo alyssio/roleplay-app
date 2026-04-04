@@ -1106,7 +1106,14 @@ function createMessageEl(msg, index) {
   if (isLastAI) {
     // Regenerate — last AI message only
     const regenBtn = makeActionBtn('Regenerate', `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`);
-    regenBtn.addEventListener('click', () => regenerateLastAI());
+    regenBtn.addEventListener('click', () => {
+      if (regenBtn.dataset.armed) { regenerateLastAI(); return; }
+      regenBtn.dataset.armed = '1';
+      regenBtn.classList.add('armed');
+      const origHTML = regenBtn.innerHTML;
+      regenBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Sure?</span>`;
+      setTimeout(() => { delete regenBtn.dataset.armed; regenBtn.classList.remove('armed'); regenBtn.innerHTML = origHTML; }, 2500);
+    });
     actions.appendChild(regenBtn);
   }
 
