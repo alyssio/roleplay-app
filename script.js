@@ -156,7 +156,7 @@ function renderMessageContent(text, el) {
   const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:[?#]\S*)?/gi;
   let last = 0, match;
   while ((match = imgRe.exec(filled)) !== null) {
-    if (match.index > last) el.appendChild(document.createTextNode(filled.slice(last, match.index)));
+    if (match.index > last) appendWithDialogue(el, filled.slice(last, match.index));
     const url = match[2] || match[0];
     const img = document.createElement('img');
     img.src = url;
@@ -166,7 +166,21 @@ function renderMessageContent(text, el) {
     el.appendChild(img);
     last = match.index + match[0].length;
   }
-  if (last < filled.length) el.appendChild(document.createTextNode(filled.slice(last)));
+  if (last < filled.length) appendWithDialogue(el, filled.slice(last));
+}
+
+// Append text to element, bolding any quoted dialogue ("...")
+function appendWithDialogue(el, text) {
+  const dialogueRe = /"([^"]+)"/g;
+  let last = 0, match;
+  while ((match = dialogueRe.exec(text)) !== null) {
+    if (match.index > last) el.appendChild(document.createTextNode(text.slice(last, match.index)));
+    const bold = document.createElement('strong');
+    bold.textContent = `\u201C${match[1]}\u201D`;
+    el.appendChild(bold);
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
 }
 
 function readFileAsBase64(file) {
@@ -485,9 +499,11 @@ function renderCharacterGrid(list, botCounts = {}) {
       const delBtn = document.createElement('button');
       delBtn.className = 'char-row-del';
       delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
-      delBtn.addEventListener('click', async (e) => {
+      async function handleDelete(e) {
         e.stopPropagation();
         e.preventDefault();
+        if (delBtn.dataset.deleting) return;
+        delBtn.dataset.deleting = '1';
         _openSwipeRow = null;
         await dbDelete('chats', char.id);
         // Animate the whole row out then remove it
@@ -499,7 +515,13 @@ function renderCharacterGrid(list, botCounts = {}) {
           wrap.style.opacity   = '0';
         });
         wrap.addEventListener('transitionend', () => wrap.remove(), { once: true });
-      });
+      }
+      delBtn.addEventListener('click', handleDelete);
+      // Fire on light tap via touchend so swipe parent doesn't swallow it
+      let _delTouchMoved = false;
+      delBtn.addEventListener('touchstart', (e) => { _delTouchMoved = false; e.stopPropagation(); }, { passive: true });
+      delBtn.addEventListener('touchmove',  ()  => { _delTouchMoved = true; }, { passive: true });
+      delBtn.addEventListener('touchend',   (e) => { if (!_delTouchMoved) { e.preventDefault(); handleDelete(e); } }, { passive: false });
 
       wrap.appendChild(delBtn);
       wrap.appendChild(row);

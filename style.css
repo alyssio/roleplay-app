@@ -542,6 +542,8 @@ html, body {
   color: #fff;
   cursor: pointer;
   z-index: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .char-row-del svg { width: 18px; height: 18px; }
 .char-row-del span { font-size: 10px; font-weight: 600; }
