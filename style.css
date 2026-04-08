@@ -888,9 +888,9 @@ html, body {
 /* crescent moon */
 .frame-moon {
   position: absolute;
-  top: 3px;
-  left: 14px;
-  font-size: 14px;
+  top: 4px;
+  left: 4px;
+  font-size: 12px;
   filter: drop-shadow(0 0 6px rgba(255,210,80,0.6));
   pointer-events: none;
   z-index: 4;
