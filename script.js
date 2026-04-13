@@ -1515,12 +1515,41 @@ async function importData(file) {
 // ─────────────────────────────────────────────
 // INIT — WIRE UP ALL EVENTS
 // ─────────────────────────────────────────────
+async function migrateAvatars() {
+  try {
+    const chars = await dbGetAll('characters');
+    for (const char of chars) {
+      if (!char.avatar || char.avatar.length <= 40000) continue; // skip if already small
+      const compressed = await compressImageToBase64(char.avatar);
+      if (compressed && compressed.length < char.avatar.length) {
+        await dbPut('characters', { ...char, avatar: compressed });
+      }
+    }
+    // Also compress persona avatar and chat background if oversized
+    const s = await dbGet('settings', 'app');
+    if (!s) return;
+    let changed = false;
+    if (s.persona?.avatar && s.persona.avatar.length > 40000) {
+      const c = await compressImageToBase64(s.persona.avatar);
+      if (c) { s.persona.avatar = c; changed = true; }
+    }
+    if (s.chatBg?.data && s.chatBg.data.length > 40000) {
+      const c = await compressImageToBase64(s.chatBg.data);
+      if (c) { s.chatBg.data = c; changed = true; }
+    }
+    if (changed) await dbPut('settings', s);
+  } catch { /* silent — migration is best-effort */ }
+}
+
 async function init() {
   db       = await openDB();
   settings = (await dbGet('settings', 'app')) || { id: 'app' };
   await loadCharacters();
 
   applyChatBg();
+
+  // Run avatar compression migration in background after UI is ready
+  setTimeout(migrateAvatars, 2000);
 
   // Restore last chat if the page was refreshed mid-chat
   const savedChat = (() => { try { return JSON.parse(sessionStorage.getItem('activeChat')); } catch { return null; } })();
