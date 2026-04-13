@@ -192,6 +192,35 @@ function readFileAsBase64(file) {
   });
 }
 
+// Resize + compress any image (File or URL blob) to max 256x256 JPEG before storing
+function compressImageToBase64(source) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 256;
+      let w = img.naturalWidth  || MAX;
+      let h = img.naturalHeight || MAX;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => resolve(null);
+    if (source instanceof File) {
+      const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target.result; };
+      reader.readAsDataURL(source);
+    } else {
+      img.src = source;
+    }
+  });
+}
+
 // ─────────────────────────────────────────────
 // TOAST NOTIFICATIONS
 // ─────────────────────────────────────────────
@@ -1537,7 +1566,7 @@ async function init() {
   document.getElementById('user-avatar-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const b64 = await readFileAsBase64(file);
+    const b64 = await compressImageToBase64(file);
     if (!settings.persona) settings.persona = {};
     settings.persona.avatar = b64;
     renderAvatarPreview(document.getElementById('user-avatar-preview'), b64, settings.persona?.name);
@@ -1762,7 +1791,7 @@ async function init() {
   document.getElementById('char-avatar-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    charAvatarData = await readFileAsBase64(file);
+    charAvatarData = await compressImageToBase64(file);
     renderAvatarPreview(
       document.getElementById('char-avatar-preview'),
       charAvatarData,
@@ -2983,11 +3012,18 @@ async function importChubChar(fullPath, name, btn) {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           try {
+            const MAX = 256;
+            let w = img.naturalWidth  || MAX;
+            let h = img.naturalHeight || MAX;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else       { w = Math.round(w * MAX / h); h = MAX; }
+            }
             const canvas = document.createElement('canvas');
-            canvas.width  = img.naturalWidth  || 512;
-            canvas.height = img.naturalHeight || 512;
-            canvas.getContext('2d').drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/jpeg', 0.88));
+            canvas.width  = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
           } catch { resolve(null); }
         };
         img.onerror = () => resolve(null);
