@@ -3006,8 +3006,8 @@ async function importChubChar(fullPath, name, btn) {
 
     // Start with API card data (may be null if parsing failed)
     let charName    = cardData?.name || '';
-    let personality = cardData?.description || cardData?.personality || cardData?.char_persona || '';
-    let openingMsg  = cardData?.first_mes || cardData?.greeting || cardData?.mes_example || '';
+    let personality = cardData?.personality || cardData?.char_persona || cardData?.system_prompt || cardData?.description || '';
+    let openingMsg  = cardData?.first_mes || cardData?.greeting || '';
 
     // Only fetch the PNG card if node.character didn't give us the definitions.
     // Must NOT go through the proxy (proxy garbles binary data); avatars.charhub.io has CORS headers.
@@ -3019,7 +3019,7 @@ async function importChubChar(fullPath, name, btn) {
           const parsed = parsePngCharaData(await res.arrayBuffer());
           if (parsed) {
             if (!charName)    charName    = parsed.name || '';
-            if (!personality) personality = parsed.description || parsed.personality || parsed.char_persona || '';
+            if (!personality) personality = parsed.personality || parsed.char_persona || parsed.system_prompt || parsed.description || '';
             if (!openingMsg)  openingMsg  = parsed.first_mes  || parsed.greeting    || '';
           }
         }
@@ -3100,22 +3100,13 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     let avatarB64 = null;
     if (avatarUrl) {
       try {
-        const proxyUrl = `${CAI_SERVER}/jai/avatar?url=${encodeURIComponent(avatarUrl)}`;
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 8000);
-        const resp = await fetch(proxyUrl, { signal: ctrl.signal });
-        clearTimeout(t);
-        const blob = await resp.blob();
-        avatarB64 = await new Promise(r => {
-          const fr = new FileReader();
-          fr.onload = () => r(fr.result);
-          fr.readAsDataURL(blob);
-        });
+        const proxyUrl = `${WORKER_BASE}?url=${encodeURIComponent(avatarUrl)}`;
+        avatarB64 = await compressImageToBase64(proxyUrl);
       } catch { avatarB64 = null; }
     }
 
     // Fetch full character detail
-    let personality = description || '';
+    let personality = '';
     let opening     = '';
     let defHidden   = false;
     let jaiTags     = [];
@@ -3124,7 +3115,7 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
       jaiTags        = (detail.tags || []).map(t => t.slug).filter(Boolean);
       pendingJaiTags = jaiTags;
       if (detail.showdefinition === true) {
-        personality = detail.personality || description || '';
+        personality = detail.personality || '';
         opening     = detail.first_message || '';
         defHidden   = false;
       } else {
