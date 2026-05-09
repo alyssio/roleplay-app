@@ -2293,10 +2293,10 @@ const KV_TOKEN          = 'aly-hidden-2026'; // must match KV_SECRET in your Wor
 const CAI_SERVER        = 'https://cai-proxy-production.up.railway.app';
 const CHUB_API          = 'https://api.chub.ai';
 const CHUB_REQUIRE_TOPICS = [
-  'male', 'yaoi', 'gay', 'bl', 'boys love', "boys' love", 'mlm',
+  'yaoi', 'gay', 'bl', 'boys love', "boys' love", "boys' love", 'mlm',
   'slash', 'male x male', 'm/m', 'mm', 'bara',
   'gay romance', 'gay male', 'homoerotic', 'homosexual',
-  'male romance', 'gay nsfw', 'gay sex', 'boys\' love',
+  'gay nsfw', 'gay sex',
 ];
 
 const CHUB_BLOCK_TOPICS = [
