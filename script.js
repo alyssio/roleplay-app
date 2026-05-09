@@ -3111,7 +3111,8 @@ async function importJaiChar(_id, name, avatarUrl, description, btn) {
     let defHidden   = false;
     let jaiTags     = [];
     try {
-      const detail = await fetch(`https://janitorai.com/hampter/characters/${_id}`).then(r => r.json());
+      const jaiUrl = `https://janitorai.com/hampter/characters/${_id}`;
+      const detail = await fetch(`${WORKER_BASE}?url=${encodeURIComponent(jaiUrl)}`).then(r => r.json());
       jaiTags        = (detail.tags || []).map(t => t.slug).filter(Boolean);
       pendingJaiTags = jaiTags;
       if (detail.showdefinition === true) {
