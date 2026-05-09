@@ -2368,10 +2368,10 @@ function _mapJaiChar(c) {
 async function fetchJaiChars() {
   if (_jaiCache && Date.now() - _jaiCacheAt < JAI_TTL) return _jaiCache;
   const pages = await Promise.allSettled(
-    [1, 2, 3, 4, 5].map(p =>
-      fetch(`https://janitorai.com/hampter/characters?page=${p}&mode=nsfw&sort=popular`)
-        .then(r => r.json())
-    )
+    [1, 2, 3, 4, 5].map(p => {
+      const u = `https://janitorai.com/hampter/characters?page=${p}&mode=nsfw&sort=popular`;
+      return fetch(`${WORKER_BASE}?url=${encodeURIComponent(u)}`).then(r => r.json());
+    })
   );
   const seen  = new Set();
   const chars = pages.flatMap(r => r.status === 'fulfilled' ? (r.value.data || []) : [])
