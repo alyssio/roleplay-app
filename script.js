@@ -414,6 +414,7 @@ async function loadCharacters() {
     botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
   });
   renderCharacterGrid(characters, botCounts);
+  toast(characters.length === 0 ? 'No characters found in storage' : `Loaded ${characters.length} character${characters.length === 1 ? '' : 's'}`, characters.length === 0 ? 'error' : '');
 }
 
 // ── Swipe-to-delete for char rows ─────────────────────────────────────────────
