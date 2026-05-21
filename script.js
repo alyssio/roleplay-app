@@ -414,7 +414,6 @@ async function loadCharacters() {
     botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
   });
   renderCharacterGrid(characters, botCounts);
-  toast(characters.length === 0 ? 'No characters found in storage' : `Loaded ${characters.length} character${characters.length === 1 ? '' : 's'}`, characters.length === 0 ? 'error' : '');
 }
 
 // ── Swipe-to-delete for char rows ─────────────────────────────────────────────
@@ -1352,7 +1351,7 @@ function buildAPIMessages() {
   }
 
   // OOC instructions
-  if (settings.oocEnabled) {
+  if (settings.oocEnabled ?? true) {
     systemContent += `\n\nIf the user sends [OOC: ...], step out of character briefly to address it, then continue the roleplay. Keep it natural — no need to announce rules or list what you're doing. Just handle it and move on.`;
   }
 
