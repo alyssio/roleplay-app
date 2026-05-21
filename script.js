@@ -465,135 +465,131 @@ function closeCharSheet() {
 }
 
 function renderCharacterGrid(list, botCounts = {}) {
-  const isMobile = window.matchMedia('(max-width: 600px)').matches;
-  const grid  = isMobile ? document.getElementById('char-sheet-list') : document.getElementById('character-grid');
-  const empty = document.getElementById('empty-state');
-  grid.innerHTML = '';
+  const sheetList = document.getElementById('char-sheet-list');
+  const cardGrid  = document.getElementById('character-grid');
+  const empty     = document.getElementById('empty-state');
 
-  if (!isMobile) {
-    if (list.length === 0) {
-      grid.classList.remove('is-list');
-      empty.style.display = '';
-      return;
-    }
-    empty.style.display = 'none';
+  sheetList.innerHTML = '';
+  cardGrid.innerHTML  = '';
+
+  if (list.length === 0) {
+    cardGrid.classList.remove('is-list');
+    empty.style.display = '';
+    return;
   }
-
-  grid.classList.toggle('is-list', isMobile);
+  empty.style.display = 'none';
+  cardGrid.classList.remove('is-list');
 
   list.forEach(char => {
-    if (isMobile) {
-      const row = document.createElement('div');
-      row.className = 'char-row';
-      row.dataset.id = char.id;
+    // ── Mobile sheet row ──────────────────────────
+    const row = document.createElement('div');
+    row.className = 'char-row';
+    row.dataset.id = char.id;
 
-      const avatarEl = document.createElement('div');
-      avatarEl.className = 'char-row-avatar';
-      if (char.avatar) {
-        avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
-      } else {
-        avatarEl.textContent = initials(char.name);
-      }
-
-      const infoEl = document.createElement('div');
-      infoEl.className = 'char-row-info';
-
-      const nameEl = document.createElement('div');
-      nameEl.className = 'char-row-name';
-      nameEl.textContent = char.name;
-
-      const countEl = document.createElement('div');
-      countEl.className = 'char-row-count';
-      const cnt = botCounts[char.id] || 0;
-      countEl.textContent = cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`;
-
-      infoEl.appendChild(nameEl);
-      infoEl.appendChild(countEl);
-
-      const continueBtn = document.createElement('button');
-      continueBtn.className = 'char-row-continue';
-      continueBtn.textContent = 'Continue';
-
-      nameEl.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
-      continueBtn.addEventListener('click', (e) => { e.stopPropagation(); openChat(char.id); });
-
-      row.appendChild(avatarEl);
-      row.appendChild(infoEl);
-      row.appendChild(continueBtn);
-
-      // ── swipe-to-delete wrapper ──────────────────
-      const wrap = document.createElement('div');
-      wrap.className = 'char-row-wrap';
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'char-row-del';
-      delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
-      async function handleDelete(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        if (delBtn.dataset.deleting) return;
-        delBtn.dataset.deleting = '1';
-        _openSwipeRow = null;
-        await dbDelete('characters', char.id);
-        await dbDelete('chats', char.id);
-        characters = characters.filter(c => c.id !== char.id);
-        // Animate the whole row out then remove it
-        wrap.style.transition = 'max-height 0.25s ease, opacity 0.25s ease';
-        wrap.style.overflow   = 'hidden';
-        wrap.style.maxHeight  = wrap.offsetHeight + 'px';
-        requestAnimationFrame(() => {
-          wrap.style.maxHeight = '0';
-          wrap.style.opacity   = '0';
-        });
-        wrap.addEventListener('transitionend', () => wrap.remove(), { once: true });
-      }
-      delBtn.addEventListener('click', handleDelete);
-      // Fire on light tap via touchend so swipe parent doesn't swallow it
-      let _delTouchMoved = false;
-      delBtn.addEventListener('touchstart', (e) => { _delTouchMoved = false; e.stopPropagation(); }, { passive: true });
-      delBtn.addEventListener('touchmove',  ()  => { _delTouchMoved = true; }, { passive: true });
-      delBtn.addEventListener('touchend',   (e) => { if (!_delTouchMoved) { e.preventDefault(); handleDelete(e); } }, { passive: false });
-
-      wrap.appendChild(delBtn);
-      wrap.appendChild(row);
-      addSwipe(wrap, row);
-      grid.appendChild(wrap);
+    const avatarEl = document.createElement('div');
+    avatarEl.className = 'char-row-avatar';
+    if (char.avatar) {
+      avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
     } else {
-      const card = document.createElement('div');
-      card.className = 'character-card';
-      card.dataset.id = char.id;
-
-      const avatarEl = document.createElement('div');
-      avatarEl.className = 'card-avatar';
-      if (char.avatar) {
-        avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
-      } else {
-        avatarEl.textContent = initials(char.name);
-      }
-
-      const nameEl = document.createElement('div');
-      nameEl.className = 'card-name';
-      nameEl.textContent = char.name;
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'card-edit-btn';
-      editBtn.title = 'Edit character';
-      editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-      editBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharModal(char.id); });
-
-      const profileBtn = document.createElement('button');
-      profileBtn.className = 'card-profile-btn';
-      profileBtn.title = 'View profile';
-      profileBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
-      profileBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
-
-      card.appendChild(editBtn);
-      card.appendChild(profileBtn);
-      card.appendChild(avatarEl);
-      card.appendChild(nameEl);
-      card.addEventListener('click', () => openChat(char.id));
-      grid.appendChild(card);
+      avatarEl.textContent = initials(char.name);
     }
+
+    const infoEl = document.createElement('div');
+    infoEl.className = 'char-row-info';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'char-row-name';
+    nameEl.textContent = char.name;
+
+    const countEl = document.createElement('div');
+    countEl.className = 'char-row-count';
+    const cnt = botCounts[char.id] || 0;
+    countEl.textContent = cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`;
+
+    infoEl.appendChild(nameEl);
+    infoEl.appendChild(countEl);
+
+    const continueBtn = document.createElement('button');
+    continueBtn.className = 'char-row-continue';
+    continueBtn.textContent = 'Continue';
+
+    nameEl.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
+    continueBtn.addEventListener('click', (e) => { e.stopPropagation(); openChat(char.id); });
+
+    row.appendChild(avatarEl);
+    row.appendChild(infoEl);
+    row.appendChild(continueBtn);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'char-row-wrap';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'char-row-del';
+    delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
+    async function handleDelete(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (delBtn.dataset.deleting) return;
+      delBtn.dataset.deleting = '1';
+      _openSwipeRow = null;
+      await dbDelete('characters', char.id);
+      await dbDelete('chats', char.id);
+      characters = characters.filter(c => c.id !== char.id);
+      wrap.style.transition = 'max-height 0.25s ease, opacity 0.25s ease';
+      wrap.style.overflow   = 'hidden';
+      wrap.style.maxHeight  = wrap.offsetHeight + 'px';
+      requestAnimationFrame(() => {
+        wrap.style.maxHeight = '0';
+        wrap.style.opacity   = '0';
+      });
+      wrap.addEventListener('transitionend', () => wrap.remove(), { once: true });
+    }
+    delBtn.addEventListener('click', handleDelete);
+    let _delTouchMoved = false;
+    delBtn.addEventListener('touchstart', (e) => { _delTouchMoved = false; e.stopPropagation(); }, { passive: true });
+    delBtn.addEventListener('touchmove',  ()  => { _delTouchMoved = true; }, { passive: true });
+    delBtn.addEventListener('touchend',   (e) => { if (!_delTouchMoved) { e.preventDefault(); handleDelete(e); } }, { passive: false });
+
+    wrap.appendChild(delBtn);
+    wrap.appendChild(row);
+    addSwipe(wrap, row);
+    sheetList.appendChild(wrap);
+
+    // ── Desktop card ──────────────────────────────
+    const card = document.createElement('div');
+    card.className = 'character-card';
+    card.dataset.id = char.id;
+
+    const cardAvatar = document.createElement('div');
+    cardAvatar.className = 'card-avatar';
+    if (char.avatar) {
+      cardAvatar.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
+    } else {
+      cardAvatar.textContent = initials(char.name);
+    }
+
+    const cardName = document.createElement('div');
+    cardName.className = 'card-name';
+    cardName.textContent = char.name;
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'card-edit-btn';
+    editBtn.title = 'Edit character';
+    editBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    editBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharModal(char.id); });
+
+    const profileBtn = document.createElement('button');
+    profileBtn.className = 'card-profile-btn';
+    profileBtn.title = 'View profile';
+    profileBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`;
+    profileBtn.addEventListener('click', (e) => { e.stopPropagation(); openCharProfile(char.id); });
+
+    card.appendChild(editBtn);
+    card.appendChild(profileBtn);
+    card.appendChild(cardAvatar);
+    card.appendChild(cardName);
+    card.addEventListener('click', () => openChat(char.id));
+    cardGrid.appendChild(card);
   });
 }
 
