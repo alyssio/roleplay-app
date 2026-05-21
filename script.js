@@ -1343,7 +1343,7 @@ function scrubUserRoleplay(text) {
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.');
+  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
