@@ -1280,8 +1280,6 @@ async function streamAIResponse() {
       }
     }
     if (slipped) accumulated = scrubUserRoleplay(accumulated);
-    // Always scrub you/your — no point retrying since it appears in almost every response
-    accumulated = scrubYouSlip(accumulated);
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
@@ -1371,8 +1369,8 @@ function buildAPIMessages() {
 
   // Always last — hard rule on second person
   systemContent += userName
-    ? `\n\n[CRITICAL RULE] You must NEVER use the word "you" or "your" to refer to the other person in the roleplay. Their name is ${userName}. Always use ${userName}'s name or "they/them" instead. Using "you" is strictly forbidden. Every single response must follow this rule without exception.`
-    : `\n\n[CRITICAL RULE] You must NEVER use the word "you" or "your" to refer to the other person in the roleplay. Refer to them by their name or use "they/them" instead. Using "you" is strictly forbidden. Every single response must follow this rule without exception.`;
+    ? `\n\n[CRITICAL RULE] In all narration and prose, never use "you" or "your" to refer to ${userName}. Always use "${userName}" or "${userName}'s" instead. This applies to every descriptive sentence. In your character's spoken dialogue you may address them naturally, but never in the narrative prose surrounding it.`
+    : `\n\n[CRITICAL RULE] In all narration and prose, never use "you" or "your" to refer to the other person. Use their name or "they/their" instead. This applies to every descriptive sentence outside of spoken dialogue.`;
 
   const messages = [{ role: 'system', content: systemContent }];
 
