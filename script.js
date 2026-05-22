@@ -1343,7 +1343,7 @@ function scrubUserRoleplay(text) {
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
+  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.\n\nAlways write long, detailed, immersive responses. Minimum 4-6 paragraphs every reply — include inner thoughts, emotions, actions, dialogue, and environmental detail. Never give short or lazy replies.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
   const userName = settings.persona?.name || null;
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
