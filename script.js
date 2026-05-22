@@ -1350,14 +1350,15 @@ function buildAPIMessages() {
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
     if (settings.persona.description) systemContent += settings.persona.description;
   }
-  systemContent += userName
-    ? `\n\nNever refer to the user as "you". Always refer to them by their name, ${userName}.`
-    : `\n\nNever refer to the user as "you". Use their name or refer to them in third person.`;
-
   // OOC instructions
   if (settings.oocEnabled ?? true) {
     systemContent += `\n\nIf the user sends [OOC: ...], step out of character briefly to address it, then continue the roleplay. Keep it natural — no need to announce rules or list what you're doing. Just handle it and move on.`;
   }
+
+  // Always last — hard rule on second person
+  systemContent += userName
+    ? `\n\n[CRITICAL RULE] You must NEVER use the word "you" or "your" to refer to the other person in the roleplay. Their name is ${userName}. Always use ${userName}'s name or "they/them" instead. Using "you" is strictly forbidden. Every single response must follow this rule without exception.`
+    : `\n\n[CRITICAL RULE] You must NEVER use the word "you" or "your" to refer to the other person in the roleplay. Refer to them by their name or use "they/them" instead. Using "you" is strictly forbidden. Every single response must follow this rule without exception.`;
 
   const messages = [{ role: 'system', content: systemContent }];
 
