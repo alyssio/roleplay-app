@@ -1267,20 +1267,21 @@ async function streamAIResponse() {
       return accumulated || '…';
     };
 
-    // Retry loop — up to 3 attempts if AI roleplays as the user or uses "you/your"
+    // Retry loop — up to 3 attempts if AI roleplays as the user
     const MAX_RETRIES = 3;
     let accumulated = '';
     let slipped = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       accumulated = await fetchOnce();
-      slipped = detectsUserRoleplay(accumulated) || detectsYouSlip(accumulated);
+      slipped = detectsUserRoleplay(accumulated);
       if (!slipped) break;
       if (attempt < MAX_RETRIES) {
         typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
       }
     }
-    // All retries failed — scrub user mentions from the last response instead of retrying again
-    if (slipped) accumulated = scrubUserRoleplay(scrubYouSlip(accumulated));
+    if (slipped) accumulated = scrubUserRoleplay(accumulated);
+    // Always scrub you/your — no point retrying since it appears in almost every response
+    accumulated = scrubYouSlip(accumulated);
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
