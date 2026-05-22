@@ -1364,7 +1364,7 @@ function buildAPIMessages() {
   }
   // OOC instructions
   if (settings.oocEnabled ?? true) {
-    systemContent += `\n\nIf the user sends [OOC: ...], respond using this exact format:\n[OOC]: your out-of-character response here.\n[IC]: then continue the roleplay in character here.\nAlways use those labels to clearly separate the two parts.`;
+    systemContent += `\n\nIf the user sends [OOC: ...], respond using this exact format:\n[OOC]: your out-of-character response here.\nThen continue the roleplay in character with no label, just naturally flow back into the scene.`;
   }
 
   // Always last — hard rule on second person
