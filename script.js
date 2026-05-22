@@ -1364,7 +1364,7 @@ function buildAPIMessages() {
   }
   // OOC instructions
   if (settings.oocEnabled ?? true) {
-    systemContent += `\n\nIf the user sends [OOC: ...], step out of character briefly to address it, then continue the roleplay. Keep it natural — no need to announce rules or list what you're doing. Just handle it and move on.`;
+    systemContent += `\n\nIf the user sends [OOC: ...], respond using this exact format:\n[OOC]: your out-of-character response here.\n[IC]: then continue the roleplay in character here.\nAlways use those labels to clearly separate the two parts.`;
   }
 
   // Always last — hard rule on second person
