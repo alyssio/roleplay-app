@@ -1267,20 +1267,20 @@ async function streamAIResponse() {
       return accumulated || '…';
     };
 
-    // Retry loop — up to 3 attempts if AI roleplays as the user
+    // Retry loop — up to 3 attempts if AI roleplays as the user or uses "you/your"
     const MAX_RETRIES = 3;
     let accumulated = '';
     let slipped = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       accumulated = await fetchOnce();
-      slipped = detectsUserRoleplay(accumulated);
+      slipped = detectsUserRoleplay(accumulated) || detectsYouSlip(accumulated);
       if (!slipped) break;
       if (attempt < MAX_RETRIES) {
         typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
       }
     }
     // All retries failed — scrub user mentions from the last response instead of retrying again
-    if (slipped) accumulated = scrubUserRoleplay(accumulated);
+    if (slipped) accumulated = scrubUserRoleplay(scrubYouSlip(accumulated));
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
@@ -1338,6 +1338,19 @@ function scrubUserRoleplay(text) {
   });
 
   return clean.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function detectsYouSlip(text) {
+  return /\byou\b|\byour\b|\byours\b|\byourself\b/i.test(text);
+}
+
+function scrubYouSlip(text) {
+  const name = (settings.persona?.name || '').trim();
+  return text
+    .replace(/\byourself\b/gi, name ? `${name}self` : 'themselves')
+    .replace(/\byours\b/gi,    name ? `${name}'s`   : 'theirs')
+    .replace(/\byour\b/gi,     name ? `${name}'s`   : 'their')
+    .replace(/\byou\b/gi,      name || 'they');
 }
 
 function buildAPIMessages() {
