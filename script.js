@@ -1280,6 +1280,7 @@ async function streamAIResponse() {
       }
     }
     if (slipped) accumulated = scrubUserRoleplay(accumulated);
+    accumulated = scrubYouSlip(accumulated);
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
@@ -1345,11 +1346,18 @@ function detectsYouSlip(text) {
 
 function scrubYouSlip(text) {
   const name = (settings.persona?.name || '').trim();
-  return text
-    .replace(/\byourself\b/gi, name ? `${name}self` : 'themselves')
-    .replace(/\byours\b/gi,    name ? `${name}'s`   : 'theirs')
-    .replace(/\byour\b/gi,     name ? `${name}'s`   : 'their')
-    .replace(/\byou\b/gi,      name || 'they');
+  if (!name) return text;
+  const sub = (s) => s
+    .replace(/\byourself\b/gi, `${name}`)
+    .replace(/\byours\b/gi,    `${name}'s`)
+    .replace(/\byour\b/gi,     `${name}'s`)
+    .replace(/\byou\b/gi,      name);
+  // Only replace outside of spoken dialogue (quoted strings)
+  return text.replace(/(“[^”]*”|"[^"]*"|'[^']*')|([^"'“”]+)/g, (m, quoted, prose) => {
+    if (quoted) return quoted;
+    if (prose)  return sub(prose);
+    return m;
+  });
 }
 
 function buildAPIMessages() {
