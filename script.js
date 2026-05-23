@@ -1305,16 +1305,17 @@ async function streamAIResponse() {
 // ── User-roleplay slip detection ──────────────────────────────────────────────
 function detectsUserRoleplay(text) {
   const name = (settings.persona?.name || '').trim();
-  // Patterns: *You verb, *Name verb, You: dialogue, Name: dialogue
   const escaped = name ? name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
   const patterns = [
-    /\*You\s+\w/i,                                          // *You walk
-    /^You:\s/im,                                            // You: "hello"
-    /\*You\b/i,                                             // *You (any)
+    /\*You\s+\w/i,           // *You walk
+    /^You:\s/im,             // You: "hello"
+    /\*You\b/i,              // *You (any)
+    /^You\s+\w+/im,          // You walk... (plain prose, line start)
   ];
   if (escaped) {
-    patterns.push(new RegExp(`\\*${escaped}\\s+\\w`, 'i')); // *Name does
-    patterns.push(new RegExp(`^${escaped}:\\s`, 'im'));      // Name: "hello"
+    patterns.push(new RegExp(`\\*${escaped}\\s+\\w`, 'i'));
+    patterns.push(new RegExp(`^${escaped}:\\s`, 'im'));
+    patterns.push(new RegExp(`^${escaped}\\s+\\w+`, 'im')); // Name walks... (plain prose)
   }
   return patterns.some(p => p.test(text));
 }
@@ -1330,9 +1331,11 @@ function scrubUserRoleplay(text) {
     if (/^\*You\s+\w/i.test(t)) return false;
     if (/^\*You\b/i.test(t)) return false;
     if (/^You:\s/i.test(t)) return false;
+    if (/^You\s+\w+/i.test(t)) return false;  // plain prose "You walk..."
     if (escaped) {
       if (new RegExp(`^\\*${escaped}\\s+\\w`, 'i').test(t)) return false;
       if (new RegExp(`^${escaped}:\\s`, 'i').test(t)) return false;
+      if (new RegExp(`^${escaped}\\s+\\w+`, 'i').test(t)) return false; // "Name walks..."
     }
     return true;
   });
