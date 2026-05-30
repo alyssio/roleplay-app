@@ -1351,7 +1351,15 @@ function scrubYouSlip(text) {
   const name = (settings.persona?.name || '').trim();
   if (!name) return text;
   const sub = (s) => s
-    .replace(/\byourself\b/gi, `${name}`)
+    .replace(/\byou're\b/gi,   `${name} is`)
+    .replace(/\byou've\b/gi,   `${name} has`)
+    .replace(/\byou'll\b/gi,   `${name} will`)
+    .replace(/\byou'd\b/gi,    `${name} would`)
+    .replace(/\byou're\b/gi,   `${name} is`)
+    .replace(/\byou've\b/gi,   `${name} has`)
+    .replace(/\byou'll\b/gi,   `${name} will`)
+    .replace(/\byou'd\b/gi,    `${name} would`)
+    .replace(/\byourself\b/gi, name)
     .replace(/\byours\b/gi,    `${name}'s`)
     .replace(/\byour\b/gi,     `${name}'s`)
     .replace(/\byou\b/gi,      name);
@@ -1366,7 +1374,7 @@ function scrubYouSlip(text) {
 function buildAPIMessages() {
   // System prompt = character personality + user persona (if enabled)
   let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role.\n\nAlways write long, detailed, immersive responses. Minimum 4-6 paragraphs every reply — include inner thoughts, emotions, actions, dialogue, and environmental detail. Never give short or lazy replies.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
+  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role. Never assume or describe {{user}}\'s physical position, state, or location unless the user has explicitly established it themselves. React to what {{user}} writes — do not invent what {{user}} is doing.\n\nAlways write long, detailed, immersive responses. Minimum 4-6 paragraphs every reply — include inner thoughts, emotions, actions, dialogue, and environmental detail. Never give short or lazy replies.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
   const userName = settings.persona?.name || null;
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
     systemContent += '\n\n---\n';
