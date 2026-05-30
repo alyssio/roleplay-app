@@ -2497,10 +2497,9 @@ async function loadBrowsePage() {
       const nameDesc = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her|she|her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
       const blockedDoveText = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
-      const hasRequiredTopic = CHUB_REQUIRE_TOPICS.some(r => topics.includes(r));
-      return hasRequiredTopic && !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
+      return !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
     });
     browseNodes = nodes;
     if (rawNodes.length === 0) browseHasMore = false;
@@ -2778,10 +2777,9 @@ async function loadDailyDiscovery() {
       const nameDesc   = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her|she|her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
       const blockedDove = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
-      const hasRequiredTopic = CHUB_REQUIRE_TOPICS.some(r => topics.includes(r));
-      return hasRequiredTopic && !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
+      return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
     // Accumulate seen paths so bots never repeat across pages

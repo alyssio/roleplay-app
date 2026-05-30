@@ -1,4 +1,4 @@
-const CACHE = 'roleplay-v33';
+const CACHE = 'roleplay-v34';
 
 self.addEventListener('install', () => self.skipWaiting());
 
