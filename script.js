@@ -2333,11 +2333,11 @@ const CHUB_REQUIRE_TOPICS = [
 
 const CHUB_BLOCK_TOPICS = [
   // Female characters
-  'female', 'lesbian', 'yuri', 'femslash', 'wlw',
-  'girl', 'girls', 'woman', 'women', 'heroine',
+  'female', 'lesbian', 'yuri', 'femslash', 'wlw', 'sapphic',
+  'girl', 'girls', 'woman', 'women', 'heroine', 'girlfriend',
   'female protagonist', 'female lead', 'female character',
-  'female reader', 'female mc', 'female pov',
-  'she/her', 'her/she',
+  'female reader', 'female mc', 'female pov', 'female x male',
+  'she/her', 'her/she', 'f/m', 'mxf', 'hetero', 'heterosexual', 'straight',
   // Femboys / crossdressing / ambiguous
   'femboy', 'femboys', 'fem boy', 'fem-boy',
   'trap', 'traps', 'crossdressing', 'crossdresser', 'cross-dresser',
@@ -2358,6 +2358,7 @@ const CHUB_BLOCK_TEXT = [
   'crossdress', 'cross dress',
   // Female character indicators
   'she/her', 'catgirl', 'shemale', 'she-male', 'futanari',
+  'your girlfriend', 'your wife', 'your sister', 'your daughter',
 ];
 const DEAD_DOVE_TAGS    = ['dead dove', 'dead-dove', 'noncon', 'non-con', 'rape', 'incest', 'snuff', 'gore', 'torture', 'underage', 'zoophilia', 'bestiality', 'beastiality', 'zoo'];
 
@@ -2496,9 +2497,10 @@ async function loadBrowsePage() {
       const nameDesc = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her|she|her)\b/.test(nameDesc);
       const blockedDoveText = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
-      return !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
+      const hasRequiredTopic = CHUB_REQUIRE_TOPICS.some(r => topics.includes(r));
+      return hasRequiredTopic && !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
     });
     browseNodes = nodes;
     if (rawNodes.length === 0) browseHasMore = false;
@@ -2776,9 +2778,10 @@ async function loadDailyDiscovery() {
       const nameDesc   = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her|she|her)\b/.test(nameDesc);
       const blockedDove = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
-      return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
+      const hasRequiredTopic = CHUB_REQUIRE_TOPICS.some(r => topics.includes(r));
+      return hasRequiredTopic && !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
 
     // Accumulate seen paths so bots never repeat across pages
