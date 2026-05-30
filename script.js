@@ -2359,6 +2359,9 @@ const CHUB_BLOCK_TEXT = [
   // Female character indicators
   'she/her', 'catgirl', 'shemale', 'she-male', 'futanari',
   'your girlfriend', 'your wife', 'your sister', 'your daughter',
+  'your mother', 'your mom', 'your mommy', 'your maid',
+  'your mistress', 'your queen', 'your princess', 'your goddess',
+  'your female', 'your girl',
 ];
 const DEAD_DOVE_TAGS    = ['dead dove', 'dead-dove', 'noncon', 'non-con', 'rape', 'incest', 'snuff', 'gore', 'torture', 'underage', 'zoophilia', 'bestiality', 'beastiality', 'zoo'];
 
@@ -2495,9 +2498,10 @@ async function loadBrowsePage() {
     const nodes = rawNodes.filter(n => {
       const topics = (n.topics || []).map(t => t.toLowerCase());
       const nameDesc = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
+      const nameTag  = `${n.name || ''} ${n.tagline || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc) || /\b(she|her)\b/.test(nameTag);
       const blockedDoveText = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
       return !blockedTag && !blockedText && !blockedWord && !blockedDoveText && !isDeadDove(n.topics || []);
     });
@@ -2775,9 +2779,10 @@ async function loadDailyDiscovery() {
       if (hiddenBots.has(n.fullPath)) return false;
       const topics     = (n.topics || []).map(t => t.toLowerCase());
       const nameDesc   = `${n.name || ''} ${n.tagline || ''} ${n.description || ''}`.toLowerCase();
+      const nameTag    = `${n.name || ''} ${n.tagline || ''}`.toLowerCase();
       const blockedTag  = CHUB_BLOCK_TOPICS.some(b => topics.includes(b));
       const blockedText = CHUB_BLOCK_TEXT.some(b => nameDesc.includes(b));
-      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc);
+      const blockedWord = /\b(girl|woman|women|she\/her)\b/.test(nameDesc) || /\b(she|her)\b/.test(nameTag);
       const blockedDove = ['zoophilia','bestiality','beastiality','with animals','animal sex','feral'].some(b => nameDesc.includes(b));
       return !blockedTag && !blockedText && !blockedWord && !blockedDove && !isDeadDove(n.topics || []);
     };
