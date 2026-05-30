@@ -2517,6 +2517,73 @@ async function loadBrowsePage() {
   browseLoading = false;
 }
 
+function getAvatarGenderCache() {
+  try { return JSON.parse(localStorage.getItem('avatarGenderCache') || '{}'); }
+  catch { return {}; }
+}
+function setAvatarGenderCache(url, isFemale) {
+  try {
+    const cache = getAvatarGenderCache();
+    cache[url] = isFemale ? 'f' : 'm';
+    const keys = Object.keys(cache);
+    if (keys.length > 600) delete cache[keys[0]];
+    localStorage.setItem('avatarGenderCache', JSON.stringify(cache));
+  } catch {}
+}
+
+async function checkAvatarIsFemale(avatarUrl) {
+  if (!avatarUrl) return false;
+  if ((settings.provider || 'deepseek') !== 'openrouter') return false;
+
+  const cache = getAvatarGenderCache();
+  if (cache[avatarUrl] !== undefined) return cache[avatarUrl] === 'f';
+
+  try {
+    const proxyUrl = `https://chub-proxy.alyssa-a85.workers.dev?url=${encodeURIComponent(avatarUrl)}`;
+    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return false;
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const base64 = await compressImageToBase64(objUrl);
+    URL.revokeObjectURL(objUrl);
+    if (!base64) return false;
+
+    const apiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: base64 } },
+          { type: 'text', text: 'Is the main character in this image female or feminine-presenting? Answer only YES or NO.' }
+        ]}],
+        max_tokens: 5,
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!apiResp.ok) return false;
+    const data = await apiResp.json();
+    const answer = (data.choices?.[0]?.message?.content || '').trim().toUpperCase();
+    const isFemale = answer.startsWith('YES');
+    setAvatarGenderCache(avatarUrl, isFemale);
+    return isFemale;
+  } catch { return false; }
+}
+
+async function runAvatarGenderFilter(grid, selector) {
+  if ((settings.provider || 'deepseek') !== 'openrouter') return;
+  const cards = [...grid.querySelectorAll(selector)];
+  const BATCH = 4;
+  for (let i = 0; i < cards.length; i += BATCH) {
+    await Promise.all(cards.slice(i, i + BATCH).map(async el => {
+      const url = el.dataset.avatarUrl;
+      if (!url) return;
+      const female = await checkAvatarIsFemale(url);
+      if (female) el.remove();
+    }));
+  }
+}
+
 function renderBrowseGrid(nodes, grid) {
   grid.innerHTML = '';
   if (!nodes.length) {
@@ -2527,6 +2594,10 @@ function renderBrowseGrid(nodes, grid) {
   nodes.forEach(node => {
     const card = document.createElement('div');
     card.className = 'browse-card';
+    const avatarSrc = node._jai
+      ? (node._jaiAvatar || '')
+      : `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
+    card.dataset.avatarUrl = avatarSrc;
 
     const avatarEl = document.createElement('div');
     avatarEl.className = 'browse-card-avatar';
@@ -2576,6 +2647,8 @@ function renderBrowseGrid(nodes, grid) {
     card.appendChild(importBtn);
     grid.appendChild(card);
   });
+
+  runAvatarGenderFilter(grid, '.browse-card');
 }
 
 function showBrowseProfile(node) {
@@ -2822,6 +2895,9 @@ function renderDiscoverGrid(nodes, grid) {
     const card = document.createElement('div');
     card.className = 'discover-card';
     card.dataset.path = node.fullPath;
+    card.dataset.avatarUrl = node._jai
+      ? (node._jaiAvatar || '')
+      : `https://avatars.charhub.io/avatars/${node.fullPath}/chara_card_v2.png`;
 
     // ── Image area ──
     const imgWrap = document.createElement('div');
@@ -2924,6 +3000,8 @@ function renderDiscoverGrid(nodes, grid) {
 
     grid.appendChild(card);
   });
+
+  runAvatarGenderFilter(grid, '.discover-card');
 }
 
 function renderDiscoverPagination() {
