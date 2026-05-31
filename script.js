@@ -1344,27 +1344,31 @@ function scrubUserRoleplay(text) {
 }
 
 function detectsYouSlip(text) {
-  return /\byou\b|\byour\b|\byours\b|\byourself\b/i.test(text);
+  // Only flag possessives and contractions — bare "you" is allowed in dialogue
+  return /\byour\b|\byours\b|\byourself\b|\byou're\b|\byou've\b|\byou'll\b|\byou'd\b/i.test(text);
 }
 
 function scrubYouSlip(text) {
   const name = (settings.persona?.name || '').trim();
   if (!name) return text;
   const sub = (s) => s
-    .replace(/\byou're\b/gi,   `${name} is`)
-    .replace(/\byou've\b/gi,   `${name} has`)
-    .replace(/\byou'll\b/gi,   `${name} will`)
-    .replace(/\byou'd\b/gi,    `${name} would`)
-    .replace(/\byou're\b/gi,   `${name} is`)
-    .replace(/\byou've\b/gi,   `${name} has`)
-    .replace(/\byou'll\b/gi,   `${name} will`)
-    .replace(/\byou'd\b/gi,    `${name} would`)
-    .replace(/\byourself\b/gi, name)
-    .replace(/\byours\b/gi,    `${name}'s`)
-    .replace(/\byour\b/gi,     `${name}'s`)
-    .replace(/\byou\b/gi,      name);
-  // Only replace outside of spoken dialogue (quoted strings)
-  return text.replace(/(“[^”]*”|"[^"]*"|'[^']*')|([^"'“”]+)/g, (m, quoted, prose) => {
+    // Contractions — straight and curly apostrophes both
+    .replace(/\byou’re\b/gi, `${name} is`)
+    .replace(/\byou're\b/gi,      `${name} is`)
+    .replace(/\byou’ve\b/gi, `${name} has`)
+    .replace(/\byou've\b/gi,      `${name} has`)
+    .replace(/\byou’ll\b/gi, `${name} will`)
+    .replace(/\byou'll\b/gi,      `${name} will`)
+    .replace(/\byou’d\b/gi,  `${name} would`)
+    .replace(/\byou'd\b/gi,       `${name} would`)
+    // Possessives — safe to replace anywhere, almost never appear in dialogue
+    .replace(/\byourself\b/gi,    name)
+    .replace(/\byours\b/gi,       `${name}'s`)
+    .replace(/\byour\b/gi,        `${name}'s`);
+    // NOTE: bare “you” intentionally NOT replaced here — the model is
+    // instructed via system prompt, and replacing bare “you” blindly
+    // corrupts character dialogue (“You have to understand” → “Azrael have to understand”)
+  return text.replace(/(“[^”]*”|”[^”]*”|'[^']*')|([^”'“”]+)/g, (m, quoted, prose) => {
     if (quoted) return quoted;
     if (prose)  return sub(prose);
     return m;
@@ -1388,8 +1392,8 @@ function buildAPIMessages() {
 
   // Always last — hard rule on second person
   systemContent += userName
-    ? `\n\n[CRITICAL RULE] In all narration and prose, never use "you" or "your" to refer to ${userName}. Always use "${userName}" or "${userName}'s" instead. This applies to every descriptive sentence. In your character's spoken dialogue you may address them naturally, but never in the narrative prose surrounding it.`
-    : `\n\n[CRITICAL RULE] In all narration and prose, never use "you" or "your" to refer to the other person. Use their name or "they/their" instead. This applies to every descriptive sentence outside of spoken dialogue.`;
+    ? `\n\n[CRITICAL RULE — MUST FOLLOW] In all narration, description, and prose, NEVER use "you", "your", "yours", or "yourself" to refer to ${userName}. Always write "${userName}" or "${userName}'s" instead.\n\nBAD: "You walk into the room." → CORRECT: "${userName} walks into the room."\nBAD: "Your hands tremble." → CORRECT: "${userName}'s hands tremble."\nBAD: "You feel the cold wind." → CORRECT: "${userName} feels the cold wind."\n\nThis rule applies to ALL prose and narration. Your character's spoken dialogue (what your character literally says out loud) may address ${userName} as "you" — but the surrounding narration never may.`
+    : `\n\n[CRITICAL RULE — MUST FOLLOW] In all narration, description, and prose, NEVER use "you" or "your" to refer to the other person. Use their name or "they/their" in all prose. Only inside your character's literal spoken dialogue may you address them as "you".`;
 
   const messages = [{ role: 'system', content: systemContent }];
 
