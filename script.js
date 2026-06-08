@@ -1422,6 +1422,9 @@ function buildAPIMessages() {
     systemContent += `\n\n[WRITING RULE] Use the user's name in narration. Use "you" naturally in your character's spoken dialogue.`;
   }
 
+  // ── History disclaimer ─────────────────────────────────────────
+  systemContent += `\n\nIMPORTANT: Older messages in this conversation may contain writing errors — "you" used in narration, actions written for the user, short replies. Those are mistakes. Do not treat them as examples of how to write. Always follow the rules above, regardless of what earlier messages look like.`;
+
   const messages = [{ role: 'system', content: systemContent }];
 
   // ── Chat history ───────────────────────────────────────────────
