@@ -1381,10 +1381,17 @@ function buildAPIMessages() {
 
   // ── Preamble (read before character card) ──────────────────────
   let preamble = `You are roleplaying as ${charName}. Stay fully in character at all times.\n\n`;
-  preamble += `ROLEPLAY RULES — follow these without exception:\n`;
+  preamble += `ROLEPLAY RULES:\n`;
   preamble += `1. Only write for ${charName}. Never write dialogue, actions, or thoughts for the user — that is the user's role entirely.\n`;
   preamble += `2. Every response must be long and immersive — minimum 4-6 paragraphs. Include inner thoughts, emotions, sensory detail, actions, and dialogue. Never give a short reply.\n`;
-  preamble += `3. In all narration and prose, refer to the user as "${userName || 'the user'}" — NEVER as "you" or "your". Reserve "you" only for your character's spoken dialogue.\n`;
+  if (userName) {
+    preamble += `3. Narration vs dialogue — this is critical:\n`;
+    preamble += `   - NARRATION (descriptive prose): use "${userName}" — e.g. "${userName}'s eyes widened." / "He watched ${userName} carefully."\n`;
+    preamble += `   - YOUR CHARACTER'S SPOKEN DIALOGUE (what ${charName} says out loud): address them naturally as "you" — e.g. "Do you want it cooked or raw?" / "I've been waiting for you."\n`;
+    preamble += `   Never say "Azrael want it" or "does Azrael want" — that is wrong. In speech, say "do you want".\n`;
+  } else {
+    preamble += `3. In narration use the user's name. In your character's spoken dialogue you may say "you" naturally.\n`;
+  }
   preamble += `4. Use correct grammar, spelling, and punctuation at all times.\n`;
   preamble += `5. Never assume or invent what the user is doing, feeling, or where they are. React only to what they explicitly write.\n\n`;
   preamble += `--- CHARACTER CARD ---\n`;
@@ -1405,9 +1412,15 @@ function buildAPIMessages() {
   }
 
   // ── Closing hard rule (last thing the model reads) ────────────
-  systemContent += userName
-    ? `\n\n[FINAL REMINDER] In narration/prose: always "${userName}", never "you" or "your".\nBAD: "You feel his gaze." → CORRECT: "${userName} feels his gaze."\nBAD: "Your breath catches." → CORRECT: "${userName}'s breath catches."\nIn spoken dialogue only, "you" is fine.`
-    : `\n\n[FINAL REMINDER] In narration/prose: never use "you" or "your". Use the user's name or "they/their". Only in spoken dialogue is "you" permitted.`;
+  if (userName) {
+    systemContent += `\n\n[WRITING RULE] Narration uses "${userName}". ${charName}'s spoken words use "you".`;
+    systemContent += `\nCORRECT: *He slid the plate across.* "Do you want it cooked or raw?" — dialogue says "you" ✓`;
+    systemContent += `\nCORRECT: ${userName}'s eyes met his across the table. — narration says "${userName}" ✓`;
+    systemContent += `\nWRONG: "Does ${userName} want it cooked?" — never use the name inside your own spoken dialogue ✗`;
+    systemContent += `\nWRONG: You feel his gaze. — never use "you" in narration ✗`;
+  } else {
+    systemContent += `\n\n[WRITING RULE] Use the user's name in narration. Use "you" naturally in your character's spoken dialogue.`;
+  }
 
   const messages = [{ role: 'system', content: systemContent }];
 
@@ -1415,9 +1428,9 @@ function buildAPIMessages() {
   const history = [...currentChat.messages];
   history.forEach((m, i) => {
     let content = fillPlaceholders(m.content);
-    // Inject a brief reminder into every user turn so it's fresh before the model responds
+    // Remind the model right before it responds — narration vs dialogue distinction
     if (m.role === 'user' && i === history.length - 1 && userName) {
-      content += `\n\n[Narrate in third person. Use "${userName}", not "you", in prose.]`;
+      content += `\n\n[Reminder: narration → "${userName}". Your spoken dialogue → "you".]`;
     }
     messages.push({ role: m.role, content });
   });
