@@ -1376,30 +1376,50 @@ function scrubYouSlip(text) {
 }
 
 function buildAPIMessages() {
-  // System prompt = character personality + user persona (if enabled)
-  let systemContent = fillPlaceholders(currentChar.personality);
-  systemContent += fillPlaceholders('\n\nOnly write for {{char}}. Never write lines, thoughts, or actions for {{user}} — that is the user\'s role. Never assume or describe {{user}}\'s physical position, state, or location unless the user has explicitly established it themselves. React to what {{user}} writes — do not invent what {{user}} is doing.\n\nAlways write long, detailed, immersive responses. Minimum 4-6 paragraphs every reply — include inner thoughts, emotions, actions, dialogue, and environmental detail. Never give short or lazy replies.\n\nAlways use correct grammar, spelling, and punctuation in your responses.');
   const userName = settings.persona?.name || null;
+  const charName = fillPlaceholders('{{char}}');
+
+  // ── Preamble (read before character card) ──────────────────────
+  let preamble = `You are roleplaying as ${charName}. Stay fully in character at all times.\n\n`;
+  preamble += `ROLEPLAY RULES — follow these without exception:\n`;
+  preamble += `1. Only write for ${charName}. Never write dialogue, actions, or thoughts for the user — that is the user's role entirely.\n`;
+  preamble += `2. Every response must be long and immersive — minimum 4-6 paragraphs. Include inner thoughts, emotions, sensory detail, actions, and dialogue. Never give a short reply.\n`;
+  preamble += `3. In all narration and prose, refer to the user as "${userName || 'the user'}" — NEVER as "you" or "your". Reserve "you" only for your character's spoken dialogue.\n`;
+  preamble += `4. Use correct grammar, spelling, and punctuation at all times.\n`;
+  preamble += `5. Never assume or invent what the user is doing, feeling, or where they are. React only to what they explicitly write.\n\n`;
+  preamble += `--- CHARACTER CARD ---\n`;
+
+  // ── Character personality ──────────────────────────────────────
+  let systemContent = preamble + fillPlaceholders(currentChar.personality);
+
+  // ── Persona ────────────────────────────────────────────────────
   if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
-    systemContent += '\n\n---\n';
+    systemContent += '\n\n--- USER INFO ---\n';
     if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
     if (settings.persona.description) systemContent += settings.persona.description;
   }
-  // OOC instructions
+
+  // ── OOC ───────────────────────────────────────────────────────
   if (settings.oocEnabled ?? true) {
-    systemContent += `\n\nIf the user sends [OOC: ...], respond using this exact format:\n[OOC]: your out-of-character response here.\nThen continue the roleplay in character with no label, just naturally flow back into the scene.`;
+    systemContent += `\n\nIf the user sends [OOC: ...], respond:\n[OOC]: your reply here.\nThen flow back into the scene in character with no label.`;
   }
 
-  // Always last — hard rule on second person
+  // ── Closing hard rule (last thing the model reads) ────────────
   systemContent += userName
-    ? `\n\n[CRITICAL RULE — MUST FOLLOW] In all narration, description, and prose, NEVER use "you", "your", "yours", or "yourself" to refer to ${userName}. Always write "${userName}" or "${userName}'s" instead.\n\nBAD: "You walk into the room." → CORRECT: "${userName} walks into the room."\nBAD: "Your hands tremble." → CORRECT: "${userName}'s hands tremble."\nBAD: "You feel the cold wind." → CORRECT: "${userName} feels the cold wind."\n\nThis rule applies to ALL prose and narration. Your character's spoken dialogue (what your character literally says out loud) may address ${userName} as "you" — but the surrounding narration never may.`
-    : `\n\n[CRITICAL RULE — MUST FOLLOW] In all narration, description, and prose, NEVER use "you" or "your" to refer to the other person. Use their name or "they/their" in all prose. Only inside your character's literal spoken dialogue may you address them as "you".`;
+    ? `\n\n[FINAL REMINDER] In narration/prose: always "${userName}", never "you" or "your".\nBAD: "You feel his gaze." → CORRECT: "${userName} feels his gaze."\nBAD: "Your breath catches." → CORRECT: "${userName}'s breath catches."\nIn spoken dialogue only, "you" is fine.`
+    : `\n\n[FINAL REMINDER] In narration/prose: never use "you" or "your". Use the user's name or "they/their". Only in spoken dialogue is "you" permitted.`;
 
   const messages = [{ role: 'system', content: systemContent }];
 
-  // Add chat history (skip opening message if it's a pure assistant seed)
-  currentChat.messages.forEach(m => {
-    messages.push({ role: m.role, content: fillPlaceholders(m.content) });
+  // ── Chat history ───────────────────────────────────────────────
+  const history = [...currentChat.messages];
+  history.forEach((m, i) => {
+    let content = fillPlaceholders(m.content);
+    // Inject a brief reminder into every user turn so it's fresh before the model responds
+    if (m.role === 'user' && i === history.length - 1 && userName) {
+      content += `\n\n[Narrate in third person. Use "${userName}", not "you", in prose.]`;
+    }
+    messages.push({ role: m.role, content });
   });
 
   return messages;
