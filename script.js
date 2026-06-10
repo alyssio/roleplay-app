@@ -338,6 +338,11 @@ function updateProviderUI(provider) {
 
   document.getElementById('api-key-label').textContent = cfg.label;
   document.getElementById('api-key').placeholder       = cfg.placeholder;
+
+  // Vision key is only needed when chatting on a non-OpenRouter provider;
+  // on OpenRouter the chat key already powers the avatar filter.
+  const visionGroup = document.getElementById('vision-key-group');
+  if (visionGroup) visionGroup.style.display = (provider === 'openrouter') ? 'none' : '';
 }
 
 function populateSettingsForm() {
