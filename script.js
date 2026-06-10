@@ -2007,6 +2007,25 @@ document.getElementById('search-input').addEventListener('input', (e) => {
     loadDailyDiscovery();
   });
 
+  // Resize the browse backdrop to match the visual viewport so the keyboard
+  // doesn't hide the modal header on Opera GX / iOS mobile browsers
+  if (window.visualViewport) {
+    const syncBrowseBackdrop = () => {
+      const backdrop = document.getElementById('browse-backdrop');
+      if (!backdrop || !backdrop.classList.contains('open')) return;
+      const vv = window.visualViewport;
+      backdrop.style.top    = `${vv.offsetTop}px`;
+      backdrop.style.height = `${vv.height}px`;
+    };
+    const resetBrowseBackdrop = () => {
+      const backdrop = document.getElementById('browse-backdrop');
+      if (backdrop) { backdrop.style.top = ''; backdrop.style.height = ''; }
+    };
+    window.visualViewport.addEventListener('resize', syncBrowseBackdrop);
+    window.visualViewport.addEventListener('scroll', syncBrowseBackdrop);
+    document.getElementById('btn-close-browse').addEventListener('click', resetBrowseBackdrop);
+  }
+
   // Restore character form if page was refreshed mid-creation/edit
   const _charDraft = (() => { try { return JSON.parse(sessionStorage.getItem('charDraft')); } catch { return null; } })();
   if (_charDraft) openCharModal(_charDraft.editingCharId || null);

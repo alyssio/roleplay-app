@@ -2054,10 +2054,6 @@ input[type="range"] {
 /* ============================================================
    CHUB.AI BROWSE MODAL
    ============================================================ */
-/* Browse modal anchors to top so keyboard never hides the header */
-#browse-backdrop {
-  align-items: flex-start;
-}
 
 .browse-modal {
   max-width: 680px;
