@@ -2057,7 +2057,6 @@ input[type="range"] {
 /* Browse modal anchors to top so keyboard never hides the header */
 #browse-backdrop {
   align-items: flex-start;
-  padding-top: max(12px, env(safe-area-inset-top));
 }
 
 .browse-modal {
