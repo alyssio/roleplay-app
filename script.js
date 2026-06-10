@@ -303,18 +303,19 @@ const PROVIDERS = {
 
 const PROVIDER_MODELS = {
   deepseek:   ['deepseek-chat', 'deepseek-reasoner'],
-  openrouter: ['google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
+  openrouter: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
 };
 
 // Friendly labels for the model dropdown
 const MODEL_LABELS = {
-  'deepseek-chat':                  'deepseek-chat (V3, cheap)',
-  'deepseek-reasoner':              'deepseek-reasoner (R1)',
-  'google/gemini-2.0-flash-001':    'Gemini 2.0 Flash (smart + very cheap, best for RP) ⭐',
-  'anthropic/claude-3.5-haiku':     'Claude 3.5 Haiku (smarter, pricier)',
-  'openai/gpt-4o-mini':             'GPT-4o mini',
-  'deepseek/deepseek-chat-v3-0324': 'DeepSeek V3',
-  'deepseek/deepseek-r1':           'DeepSeek R1',
+  'deepseek-chat':                   'deepseek-chat (V3, cheap)',
+  'deepseek-reasoner':               'deepseek-reasoner (R1)',
+  'google/gemini-2.0-flash-exp:free':'Gemini 2.0 Flash — FREE (best for RP) ⭐',
+  'google/gemini-2.0-flash-001':     'Gemini 2.0 Flash (paid, needs credits)',
+  'anthropic/claude-3.5-haiku':      'Claude 3.5 Haiku (smarter, pricier)',
+  'openai/gpt-4o-mini':              'GPT-4o mini',
+  'deepseek/deepseek-chat-v3-0324':  'DeepSeek V3',
+  'deepseek/deepseek-r1':            'DeepSeek R1',
 };
 
 function getEndpoint() {
