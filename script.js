@@ -2532,6 +2532,8 @@ async function loadBrowsePage() {
     if (browseQuery) params.set('search', browseQuery);
     // Bias API results toward male/gay characters before post-filtering
     if (!browseQuery) params.set('tags', 'gay,yaoi,bl,mlm,bara,male,m/m,boys love,gay nsfw,gay sex,slash');
+    // Exclude female/adjacent tags server-side so they never come back
+    params.set('exclude_tags', 'female,lesbian,yuri,futanari,futa,girl,woman,catgirl,shemale,sissy,femboy,straight,hetero,wlw,sapphic');
 
     const data     = await chubFetch(`/search?${params}`);
     const inner    = data.data || data;
@@ -2877,6 +2879,7 @@ async function loadDailyDiscovery() {
       sort:         'rating_count',
     });
     params.set('tags', 'gay,yaoi,bl,mlm,bara,male,m/m,boys love,gay nsfw,gay sex,slash');
+    params.set('exclude_tags', 'female,lesbian,yuri,futanari,futa,girl,woman,catgirl,shemale,sissy,femboy,straight,hetero,wlw,sapphic');
 
     const [chubData, jaiResult] = await Promise.allSettled([
       chubFetch(`/search?${params}`),
