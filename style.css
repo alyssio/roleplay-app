@@ -1310,10 +1310,6 @@ input[type="range"] {
     padding-bottom: calc(14px + var(--keyboard-h));
     transition: padding-bottom 0.15s ease;
   }
-  .home-toolbar {
-    margin-bottom: var(--keyboard-h);
-    transition: margin-bottom 0.15s ease;
-  }
 }
 
 /* Prevent iOS from zooming in on input focus */
