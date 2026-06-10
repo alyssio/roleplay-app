@@ -332,6 +332,7 @@ function populateSettingsForm() {
   const provider = settings.provider || 'deepseek';
   document.getElementById('provider-select').value     = provider;
   document.getElementById('api-key').value             = settings.apiKey      || '';
+  document.getElementById('vision-key').value          = settings.visionKey   || '';
   document.getElementById('temperature').value         = settings.temperature ?? 0.8;
   document.getElementById('temp-display').textContent  = settings.temperature ?? 0.8;
   document.getElementById('persona-name').value        = settings.persona?.name        || '';
@@ -377,6 +378,7 @@ async function saveSettings({ silent = false, close = false } = {}) {
     id:          'app',
     provider:    document.getElementById('provider-select').value,
     apiKey:      document.getElementById('api-key').value.trim(),
+    visionKey:   document.getElementById('vision-key').value.trim(),
     model,
     temperature: parseFloat(document.getElementById('temperature').value),
     oocEnabled:  document.getElementById('ooc-enabled').checked,
@@ -2575,9 +2577,18 @@ function setAvatarGenderCache(url, isFemale) {
   } catch {}
 }
 
+// The vision key is a dedicated OpenRouter key used only for avatar gender
+// checks. Falls back to the chat key if the chat provider is already OpenRouter.
+function getVisionKey() {
+  if (settings.visionKey) return settings.visionKey.trim();
+  if ((settings.provider || 'deepseek') === 'openrouter' && settings.apiKey) return settings.apiKey.trim();
+  return '';
+}
+
 async function checkAvatarIsFemale(avatarUrl) {
   if (!avatarUrl) return false;
-  if ((settings.provider || 'deepseek') !== 'openrouter') return false;
+  const visionKey = getVisionKey();
+  if (!visionKey) return false;
 
   const cache = getAvatarGenderCache();
   if (cache[avatarUrl] !== undefined) return cache[avatarUrl] === 'f';
@@ -2594,7 +2605,7 @@ async function checkAvatarIsFemale(avatarUrl) {
 
     const apiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${visionKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
         messages: [{ role: 'user', content: [
@@ -2615,7 +2626,7 @@ async function checkAvatarIsFemale(avatarUrl) {
 }
 
 async function runAvatarGenderFilter(grid, selector) {
-  if ((settings.provider || 'deepseek') !== 'openrouter') return;
+  if (!getVisionKey()) return;
   const cards = [...grid.querySelectorAll(selector)];
   const BATCH = 4;
   for (let i = 0; i < cards.length; i += BATCH) {
