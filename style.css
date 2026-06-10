@@ -2057,7 +2057,7 @@ input[type="range"] {
 .browse-modal {
   max-width: 680px;
   width: 96vw;
-  max-height: 90vh;
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
   padding: 0;

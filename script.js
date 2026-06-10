@@ -2524,12 +2524,14 @@ async function loadBrowsePage() {
     const nsfwChecked = document.getElementById('browse-nsfw')?.checked ?? true;
     const params = new URLSearchParams({
       page:         browsePage,
-      page_size:    48,
+      page_size:    100,
       content_type: 'characters',
       nsfw:         nsfwChecked ? 'true' : 'false',
       sort:         'rating_count',
     });
     if (browseQuery) params.set('search', browseQuery);
+    // Bias API results toward male/gay characters before post-filtering
+    if (!browseQuery) params.set('tags', 'gay,yaoi,bl,mlm,bara,male,m/m,boys love,gay nsfw,gay sex,slash');
 
     const data     = await chubFetch(`/search?${params}`);
     const inner    = data.data || data;
@@ -2869,11 +2871,12 @@ async function loadDailyDiscovery() {
   try {
     const params = new URLSearchParams({
       page:         dailyPage,
-      page_size:    mobileQuery.matches ? 18 : 48,
+      page_size:    mobileQuery.matches ? 40 : 100,
       content_type: 'characters',
       nsfw:         'true',
       sort:         'rating_count',
     });
+    params.set('tags', 'gay,yaoi,bl,mlm,bara,male,m/m,boys love,gay nsfw,gay sex,slash');
 
     const [chubData, jaiResult] = await Promise.allSettled([
       chubFetch(`/search?${params}`),
