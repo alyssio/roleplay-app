@@ -1641,11 +1641,31 @@ async function exportData() {
   const discoverState = JSON.parse(localStorage.getItem('discover-state')  || 'null');
 
   const data = { characters: chars, chats, settings: s, hiddenBots, discoverState, exportedAt: new Date().toISOString() };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const json = JSON.stringify(data, null, 2);
+  const filename = `roleplay-backup-${Date.now()}.json`;
+
+  // Mobile browsers (Opera GX, iOS) ignore the download attribute and just
+  // open the file in a tab. Prefer the native share sheet there so it can
+  // actually be saved to Files.
+  try {
+    const file = new File([json], filename, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Roleplay backup' });
+      localStorage.setItem('rp-last-backup', Date.now().toString());
+      toast('Backup ready — choose "Save to Files".', 'success');
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return; // user closed the share sheet
+    // any other failure — fall through to the download method
+  }
+
+  // Desktop fallback: classic download link
+  const blob = new Blob([json], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `roleplay-backup-${Date.now()}.json`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
   localStorage.setItem('rp-last-backup', Date.now().toString());
