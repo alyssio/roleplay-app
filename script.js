@@ -1736,9 +1736,24 @@ async function saveLocalSnapshot() {
   try {
     if (!db) return;
     const chars = (await dbGetAll('characters')).map(c => ({ ...c, avatar: null }));
-    const chats = await dbGetAll('chats');
-    localStorage.setItem('rp-snapshot', JSON.stringify({ characters: chars, chats, savedAt: Date.now() }));
-  } catch { /* quota or serialization issue — skip */ }
+    let chats = await dbGetAll('chats');
+
+    const build = (perChatCap) => JSON.stringify({
+      characters: chars,
+      chats: perChatCap
+        ? chats.map(c => ({ ...c, messages: (c.messages || []).slice(-perChatCap) }))
+        : chats,
+      savedAt: Date.now(),
+      ...(perChatCap ? { trimmed: true } : {}),
+    });
+
+    // Try full, then progressively trim oldest messages so the snapshot
+    // always fits in localStorage rather than silently failing on huge chats.
+    for (const cap of [null, 400, 200, 80, 30]) {
+      try { localStorage.setItem('rp-snapshot', build(cap)); return; }
+      catch { /* quota exceeded — try a smaller cap */ }
+    }
+  } catch { /* serialization issue — skip */ }
 }
 
 // On startup, if the DB looks empty but a snapshot exists, offer to restore.
