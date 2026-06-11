@@ -1294,7 +1294,7 @@ async function streamAIResponse() {
     const provider = settings.provider || 'deepseek';
     // Cap reply length on Groq's tight free tier so output tokens don't blow
     // the per-minute budget; still long enough for 4-6 paragraphs.
-    const maxTokens = provider === 'groq' ? 1100 : undefined;
+    const maxTokens = provider === 'groq' ? 500 : undefined;
 
     const fetchOnce = async () => {
       // One request per send. Do NOT auto-retry 429 — that just burns more
@@ -1469,7 +1469,7 @@ function buildAPIMessages() {
     preamble += `   WRONG: "${userName} trots back into the room and breaks into a run toward me." — you moved the user's character. ✗\n`;
     preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
   }
-  preamble += `2. Write about 2 lean paragraphs. VARY your sentence structure — do NOT begin sentence after sentence with "I" or "${charName}". Don't narrate every tiny physical motion (reaching, holding, glancing, pulling covers); pick only the meaningful beats. Cut emotional cliches entirely: no "a sense of X washed over me", no "voice filled with love/reassurance", no "warmth and gentle purrs". Real, varied prose — not a stream of "I did this, I felt that".\n`;
+  preamble += `2. Keep replies SHORT — usually ONE short paragraph (3-5 sentences), occasionally two if truly needed. Be concise. VARY your sentence structure — do NOT begin sentence after sentence with "I" or "${charName}". Don't narrate every tiny physical motion; pick only the meaningful beats. Cut emotional cliches entirely: no "a sense of X washed over me", no "voice filled with love/reassurance", no "warmth and gentle purrs". Real, varied, economical prose — not a stream of "I did this, I felt that".\n`;
   preamble += `2b. ADVANCE THE PLOT — this is the most important rule. Whatever goal/tension/situation is active (e.g. the supplements), PURSUE it. Do not name a goal and then abandon it for naps, blankets, cuddling, or "let's just rest". Make the story progress: introduce a development, a complication, a decision, a real event. ${charName} drives it with dialogue and action. Never end on a question.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
@@ -1565,7 +1565,7 @@ function buildAPIMessages() {
       const namePart = userName
         ? ` Don't act for ${userName} — only react. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; don't repeat "${userName}" every sentence. In dialogue, say "you".`
         : '';
-      content += `\n\n[Reply: ~2 paragraphs. Stay consistent with the actual ongoing plot/situation and move it forward — no disconnected filler. ${charName} speaks (real dialogue) and does concrete things. No repeating an action/phrase, no flowery filler, no ending on a question.${namePart}]`;
+      content += `\n\n[Reply: SHORT — 1 paragraph (3-5 sentences). Stay on the actual plot and move it forward. ${charName} speaks (real dialogue) and does something concrete. No filler, no repeating, no ending on a question.${namePart}]`;
     }
     messages.push({ role: m.role, content });
   });
