@@ -1469,8 +1469,8 @@ function buildAPIMessages() {
     preamble += `   WRONG: "${userName} trots back into the room and breaks into a run toward me." — you moved the user's character. ✗\n`;
     preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
   }
-  preamble += `2. Write 2-3 tight paragraphs. ${charName} should TALK — include real spoken dialogue in almost every reply. Do not write long stretches of pure atmosphere/mood. Avoid flowery filler ("cozy cocoon", "lulling melody", "peaceful atmosphere washing over"), stacked adjectives, and meandering scene-painting. Favor concrete actions and dialogue over describing the air, the light, or feelings at length. Vivid but lean.\n`;
-  preamble += `2b. DRIVE THE SCENE with dialogue and decisions. ${charName} says things, does things, makes things happen — don't just silently emote and set mood. Don't ask the user questions or seek approval, and don't end every reply with a question. Speak and act.\n`;
+  preamble += `2. Keep replies SHORT and punchy — 1 to 2 short paragraphs, no more. ${charName} should TALK (real dialogue) and do one or two concrete things. NEVER repeat the same action or phrase within a reply (e.g. don't mention stroking hair more than once; don't reuse "I smile, feeling a sense of..."). No flowery filler, no stacked adjectives, no mood-painting. Lean and natural, like a real person.\n`;
+  preamble += `2b. DRIVE THE SCENE with dialogue and decisions. ${charName} says things and does things — don't just silently emote. Don't ask the user questions or end every reply with a question. Speak and act, then stop.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
     preamble += `   - NARRATION (descriptive prose): refer to the user with NATURAL PRONOUNS (he/she/they, his/her/their) most of the time, and the name "${userName}" only occasionally for clarity. NEVER use "you/your" in narration. Do NOT repeat "${userName}" in every sentence — that reads robotic.\n`;
@@ -1544,7 +1544,7 @@ function buildAPIMessages() {
       const namePart = userName
         ? ` Don't act for ${userName} — only react. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; don't repeat "${userName}" every sentence. In dialogue, say "you".`
         : '';
-      content += `\n\n[Reply: 2-3 lean paragraphs. ${charName} should SPEAK (real dialogue) and DO things — advance the scene. No walls of mood/atmosphere, no flowery filler, no ending on a question.${namePart}]`;
+      content += `\n\n[Reply: 1-2 SHORT paragraphs, no more. ${charName} speaks (real dialogue) and does one or two things. No repeating an action/phrase, no flowery filler, no ending on a question.${namePart}]`;
     }
     messages.push({ role: m.role, content });
   });
