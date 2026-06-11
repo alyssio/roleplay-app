@@ -1258,10 +1258,9 @@ async function streamAIResponse() {
     const temp     = settings.temperature ?? 0.8;
 
     const fetchOnce = async () => {
-      // Retry on 429 (rate limit) with a short backoff before giving up
-      let response;
-      for (let rl = 0; rl < 3; rl++) {
-        response = await fetch(getEndpoint(), {
+      // One request per send. Do NOT auto-retry 429 — that just burns more
+      // of the free-tier quota and keeps the rate-limit window saturated.
+      const response = await fetch(getEndpoint(), {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
@@ -1271,17 +1270,10 @@ async function streamAIResponse() {
         },
         body: JSON.stringify({ model, temperature: temp, stream: true, messages }),
       });
-        if (response.status === 429 && rl < 2) {
-          typingBubble.innerHTML = `<span class="retry-label">rate limited, waiting…</span><span>♥</span><span>♥</span><span>♥</span>`;
-          await new Promise(r => setTimeout(r, 4000 * (rl + 1)));
-          continue; // retry
-        }
-        break;
-      }
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         const msg = response.status === 429
-          ? 'Rate limited by Google (free tier ~15/min). Wait a moment and resend.'
+          ? 'Rate limited by Google. Wait ~60s without sending anything, then send once.'
           : (err?.error?.message || `HTTP ${response.status}`);
         throw new Error(msg);
       }
@@ -1305,8 +1297,9 @@ async function streamAIResponse() {
       return accumulated || '…';
     };
 
-    // Retry loop — up to 3 attempts if AI roleplays as the user
-    const MAX_RETRIES = 3;
+    // Retry loop if AI roleplays as the user. Kept low to avoid burning
+    // free-tier rate limits (each retry is another full request).
+    const MAX_RETRIES = 2;
     let accumulated = '';
     let slipped = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
