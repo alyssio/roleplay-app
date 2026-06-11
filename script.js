@@ -1458,6 +1458,7 @@ function buildAPIMessages() {
     preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
   }
   preamble += `2. Write immersive, substantial replies — about 2-4 paragraphs. Blend actions, emotions, sensory detail, and dialogue so the scene feels alive. But stay GROUNDED: every sentence should make sense and move the scene forward. No purple prose, no flowery word-salad, no piling on metaphors. Vivid and clear, not overwrought. Don't pad just to be long.\n`;
+  preamble += `2b. DRIVE THE SCENE. ${charName} acts with their own initiative — takes actions, makes decisions, introduces events, moves through the world. Do NOT just stand around asking the user questions or seeking approval. Avoid ending replies with a question every time (no constant "aren't you?", "don't you think?", "what do you want to do?"). Make things happen; let the user react.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
     preamble += `   - NARRATION (descriptive prose): use "${userName}" — e.g. "${userName}'s eyes widened." / "He watched ${userName} carefully."\n`;
