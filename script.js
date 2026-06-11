@@ -303,17 +303,16 @@ const PROVIDERS = {
 };
 
 const PROVIDER_MODELS = {
-  google:     ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  google:     ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'],
   deepseek:   ['deepseek-chat', 'deepseek-reasoner'],
   openrouter: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
 };
 
 // Friendly labels for the model dropdown
 const MODEL_LABELS = {
-  'gemini-2.0-flash':                'Gemini 2.0 Flash — FREE (best for RP) ⭐',
-  'gemini-2.0-flash-lite':           'Gemini 2.0 Flash-Lite — FREE (fastest)',
-  'gemini-1.5-flash':                'Gemini 1.5 Flash — FREE',
-  'gemini-1.5-pro':                  'Gemini 1.5 Pro — FREE (smartest, lower limits)',
+  'gemini-2.0-flash-lite':           'Gemini 2.0 Flash-Lite — FREE (highest limit) ⭐',
+  'gemini-2.0-flash':                'Gemini 2.0 Flash — FREE (best for RP)',
+  'gemini-2.5-flash':                'Gemini 2.5 Flash — FREE (newest, lower limit)',
   'deepseek-chat':                   'deepseek-chat (V3, cheap)',
   'deepseek-reasoner':               'deepseek-reasoner (R1)',
   'google/gemini-2.0-flash-exp:free':'Gemini 2.0 Flash — FREE (best for RP) ⭐',
