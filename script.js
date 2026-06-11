@@ -297,17 +297,23 @@ function closeSettings() {
 
 // Provider configs
 const PROVIDERS = {
+  google:     { label: 'Google AI Studio Key', placeholder: 'AIza… (free, no card)', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' },
   deepseek:   { label: 'DeepSeek API Key', placeholder: 'sk-…',     endpoint: 'https://api.deepseek.com/v1/chat/completions' },
   openrouter: { label: 'OpenRouter API Key', placeholder: 'sk-or-…', endpoint: 'https://openrouter.ai/api/v1/chat/completions' },
 };
 
 const PROVIDER_MODELS = {
+  google:     ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
   deepseek:   ['deepseek-chat', 'deepseek-reasoner'],
   openrouter: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
 };
 
 // Friendly labels for the model dropdown
 const MODEL_LABELS = {
+  'gemini-2.0-flash':                'Gemini 2.0 Flash — FREE (best for RP) ⭐',
+  'gemini-2.0-flash-lite':           'Gemini 2.0 Flash-Lite — FREE (fastest)',
+  'gemini-1.5-flash':                'Gemini 1.5 Flash — FREE',
+  'gemini-1.5-pro':                  'Gemini 1.5 Pro — FREE (smartest, lower limits)',
   'deepseek-chat':                   'deepseek-chat (V3, cheap)',
   'deepseek-reasoner':               'deepseek-reasoner (R1)',
   'google/gemini-2.0-flash-exp:free':'Gemini 2.0 Flash — FREE (best for RP) ⭐',
@@ -339,10 +345,10 @@ function updateProviderUI(provider) {
   document.getElementById('api-key-label').textContent = cfg.label;
   document.getElementById('api-key').placeholder       = cfg.placeholder;
 
-  // Vision key is only needed when chatting on a non-OpenRouter provider;
-  // on OpenRouter the chat key already powers the avatar filter.
+  // Vision key only needed on DeepSeek (no vision); Google/OpenRouter chat
+  // keys already power the avatar filter, so hide it for them.
   const visionGroup = document.getElementById('vision-key-group');
-  if (visionGroup) visionGroup.style.display = (provider === 'openrouter') ? 'none' : '';
+  if (visionGroup) visionGroup.style.display = (provider === 'deepseek') ? '' : 'none';
 }
 
 function populateSettingsForm() {
@@ -2594,18 +2600,27 @@ function setAvatarGenderCache(url, isFemale) {
   } catch {}
 }
 
-// The vision key is a dedicated OpenRouter key used only for avatar gender
-// checks. Falls back to the chat key if the chat provider is already OpenRouter.
-function getVisionKey() {
-  if (settings.visionKey) return settings.visionKey.trim();
-  if ((settings.provider || 'deepseek') === 'openrouter' && settings.apiKey) return settings.apiKey.trim();
-  return '';
+// Returns the endpoint/key/model to use for vision avatar checks, or null.
+// Priority: dedicated OpenRouter vision key > Google chat key (Gemini is
+// vision-capable & free) > OpenRouter chat key.
+function getVisionConfig() {
+  if (settings.visionKey) {
+    return { endpoint: 'https://openrouter.ai/api/v1/chat/completions', key: settings.visionKey.trim(), model: 'meta-llama/llama-3.2-11b-vision-instruct:free' };
+  }
+  const provider = settings.provider || 'deepseek';
+  if (provider === 'google' && settings.apiKey) {
+    return { endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', key: settings.apiKey.trim(), model: 'gemini-2.0-flash' };
+  }
+  if (provider === 'openrouter' && settings.apiKey) {
+    return { endpoint: 'https://openrouter.ai/api/v1/chat/completions', key: settings.apiKey.trim(), model: 'meta-llama/llama-3.2-11b-vision-instruct:free' };
+  }
+  return null;
 }
 
 async function checkAvatarIsFemale(avatarUrl) {
   if (!avatarUrl) return false;
-  const visionKey = getVisionKey();
-  if (!visionKey) return false;
+  const cfg = getVisionConfig();
+  if (!cfg) return false;
 
   const cache = getAvatarGenderCache();
   if (cache[avatarUrl] !== undefined) return cache[avatarUrl] === 'f';
@@ -2620,11 +2635,11 @@ async function checkAvatarIsFemale(avatarUrl) {
     URL.revokeObjectURL(objUrl);
     if (!base64) return false;
 
-    const apiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const apiResp = await fetch(cfg.endpoint, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${visionKey}`, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
+        model: cfg.model,
         messages: [{ role: 'user', content: [
           { type: 'image_url', image_url: { url: base64 } },
           { type: 'text', text: 'Is the main character in this image female or feminine-presenting? Answer only YES or NO.' }
@@ -2643,7 +2658,7 @@ async function checkAvatarIsFemale(avatarUrl) {
 }
 
 async function runAvatarGenderFilter(grid, selector) {
-  if (!getVisionKey()) return;
+  if (!getVisionConfig()) return;
   const cards = [...grid.querySelectorAll(selector)];
   const BATCH = 4;
   for (let i = 0; i < cards.length; i += BATCH) {
