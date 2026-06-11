@@ -1258,7 +1258,10 @@ async function streamAIResponse() {
     const temp     = settings.temperature ?? 0.8;
 
     const fetchOnce = async () => {
-      const response = await fetch(getEndpoint(), {
+      // Retry on 429 (rate limit) with a short backoff before giving up
+      let response;
+      for (let rl = 0; rl < 3; rl++) {
+        response = await fetch(getEndpoint(), {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
@@ -1268,9 +1271,19 @@ async function streamAIResponse() {
         },
         body: JSON.stringify({ model, temperature: temp, stream: true, messages }),
       });
+        if (response.status === 429 && rl < 2) {
+          typingBubble.innerHTML = `<span class="retry-label">rate limited, waiting…</span><span>♥</span><span>♥</span><span>♥</span>`;
+          await new Promise(r => setTimeout(r, 4000 * (rl + 1)));
+          continue; // retry
+        }
+        break;
+      }
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `HTTP ${response.status}`);
+        const msg = response.status === 429
+          ? 'Rate limited by Google (free tier ~15/min). Wait a moment and resend.'
+          : (err?.error?.message || `HTTP ${response.status}`);
+        throw new Error(msg);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -2648,26 +2661,37 @@ async function checkAvatarIsFemale(avatarUrl) {
       }),
       signal: AbortSignal.timeout(12000),
     });
+    if (apiResp.status === 429) { const e = new Error('RATE_LIMIT'); e.rateLimited = true; throw e; }
     if (!apiResp.ok) return false;
     const data = await apiResp.json();
     const answer = (data.choices?.[0]?.message?.content || '').trim().toUpperCase();
     const isFemale = answer.startsWith('YES');
     setAvatarGenderCache(avatarUrl, isFemale);
     return isFemale;
-  } catch { return false; }
+  } catch (e) {
+    if (e && e.rateLimited) throw e; // bubble up so the filter can stop
+    return false;
+  }
 }
 
 async function runAvatarGenderFilter(grid, selector) {
   if (!getVisionConfig()) return;
   const cards = [...grid.querySelectorAll(selector)];
-  const BATCH = 4;
+  // Gentle pace so avatar checks never starve the chat rate limit:
+  // 2 at a time with a pause between, and stop entirely on a 429.
+  const BATCH = 2;
   for (let i = 0; i < cards.length; i += BATCH) {
-    await Promise.all(cards.slice(i, i + BATCH).map(async el => {
-      const url = el.dataset.avatarUrl;
-      if (!url) return;
-      const female = await checkAvatarIsFemale(url);
-      if (female) el.remove();
-    }));
+    try {
+      await Promise.all(cards.slice(i, i + BATCH).map(async el => {
+        const url = el.dataset.avatarUrl;
+        if (!url) return;
+        const female = await checkAvatarIsFemale(url);
+        if (female) el.remove();
+      }));
+    } catch (e) {
+      if (e && e.rateLimited) return; // hit the limit — back off, leave the rest
+    }
+    await new Promise(r => setTimeout(r, 1200));
   }
 }
 
