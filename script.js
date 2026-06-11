@@ -1321,20 +1321,29 @@ async function streamAIResponse() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
-      while (true) {
+      let buffer = '';           // holds an incomplete line across chunk reads
+      let streamDone = false;
+
+      const handleLine = (line) => {
+        const t = line.trim();
+        if (!t.startsWith('data:')) return;
+        const data = t.slice(5).trim();
+        if (data === '[DONE]') { streamDone = true; return; }
+        try {
+          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+          if (delta) accumulated += delta;
+        } catch { /* incomplete/non-JSON line — skip */ }
+      };
+
+      while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') break;
-          try {
-            const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-            if (delta) accumulated += delta;
-          } catch { /* skip */ }
-        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();    // keep the last, possibly-incomplete line
+        for (const line of lines) { handleLine(line); if (streamDone) break; }
       }
+      if (buffer) handleLine(buffer); // flush any trailing complete line
       return accumulated || '…';
     };
 
@@ -2451,27 +2460,35 @@ async function sendRosieMessage() {
     const reader  = response.body.getReader();
     const decoder = new TextDecoder();
     let accumulated = '';
+    let buffer = '';
+    let streamDone = false;
 
-    while (true) {
+    const handleLine = (line) => {
+      const t = line.trim();
+      if (!t.startsWith('data:')) return;
+      const data = t.slice(5).trim();
+      if (data === '[DONE]') { streamDone = true; return; }
+      try {
+        const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+        if (delta) {
+          accumulated += delta;
+          bubble.textContent = accumulated;
+          bubble.appendChild(cursor);
+          document.getElementById('rosie-messages').scrollTop =
+            document.getElementById('rosie-messages').scrollHeight;
+        }
+      } catch { /* incomplete/non-JSON line — skip */ }
+    };
+
+    while (!streamDone) {
       const { done, value } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') break;
-        try {
-          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-          if (delta) {
-            accumulated += delta;
-            bubble.textContent = accumulated;
-            bubble.appendChild(cursor);
-            document.getElementById('rosie-messages').scrollTop =
-              document.getElementById('rosie-messages').scrollHeight;
-          }
-        } catch { /* skip malformed */ }
-      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) { handleLine(line); if (streamDone) break; }
     }
+    if (buffer) handleLine(buffer);
 
     bubble.textContent = accumulated || '…';
     rosieHistory.push({ role: 'assistant', content: accumulated });
