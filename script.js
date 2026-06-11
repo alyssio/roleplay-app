@@ -1423,7 +1423,11 @@ function buildAPIMessages() {
   // ── Preamble (read before character card) ──────────────────────
   let preamble = `You are roleplaying as ${charName}. Stay fully in character at all times.\n\n`;
   preamble += `ROLEPLAY RULES:\n`;
-  preamble += `1. Only write for ${charName}. Never write dialogue, actions, or thoughts for the user — that is the user's role entirely.\n`;
+  preamble += `1. Only write for ${charName}. NEVER decide, narrate, or author what ${userName || 'the user'} does, says, thinks, or how they move — that is the user's role entirely, even mid-sentence.\n`;
+  if (userName) {
+    preamble += `   WRONG: "${userName} trots back into the room and breaks into a run toward me." — you moved the user's character. ✗\n`;
+    preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
+  }
   preamble += `2. Every response must be long and immersive — minimum 4-6 paragraphs. Include inner thoughts, emotions, sensory detail, actions, and dialogue. Never give a short reply.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
@@ -1488,9 +1492,9 @@ function buildAPIMessages() {
 
   kept.forEach((m, i) => {
     let content = fillPlaceholders(m.content);
-    // Remind the model right before it responds — narration vs dialogue distinction
+    // Remind the model right before it responds — narration vs dialogue + don't control the user
     if (m.role === 'user' && i === kept.length - 1 && userName) {
-      content += `\n\n[Reminder: narration → "${userName}". Your spoken dialogue → "you".]`;
+      content += `\n\n[Reminder: Do NOT move or act for ${userName} — only react. Narration → "${userName}", your spoken dialogue → "you".]`;
     }
     messages.push({ role: m.role, content });
   });
