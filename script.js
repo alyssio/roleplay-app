@@ -1473,9 +1473,11 @@ function buildAPIMessages() {
   preamble += `2b. DRIVE THE SCENE. ${charName} acts with their own initiative — takes actions, makes decisions, introduces events, moves through the world. Do NOT just stand around asking the user questions or seeking approval. Avoid ending replies with a question every time (no constant "aren't you?", "don't you think?", "what do you want to do?"). Make things happen; let the user react.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
-    preamble += `   - NARRATION (descriptive prose): use "${userName}" — e.g. "${userName}'s eyes widened." / "He watched ${userName} carefully."\n`;
-    preamble += `   - YOUR CHARACTER'S SPOKEN DIALOGUE (what ${charName} says out loud): address them naturally as "you" — e.g. "Do you want it cooked or raw?" / "I've been waiting for you."\n`;
-    preamble += `   Never say "Azrael want it" or "does Azrael want" — that is wrong. In speech, say "do you want".\n`;
+    preamble += `   - NARRATION (descriptive prose): refer to the user with NATURAL PRONOUNS (he/she/they, his/her/their) most of the time, and the name "${userName}" only occasionally for clarity. NEVER use "you/your" in narration. Do NOT repeat "${userName}" in every sentence — that reads robotic.\n`;
+    preamble += `     GOOD: "${userName} shifted closer, his eyes half-closed as his breathing slowed." (name once, then pronouns)\n`;
+    preamble += `     BAD: "${userName}'s eyes closed as ${userName}'s breathing slowed and ${userName} shifted closer." (name spammed — never do this)\n`;
+    preamble += `     BAD: "Your eyes closed as your breathing slowed." (never "you/your" in narration)\n`;
+    preamble += `   - YOUR CHARACTER'S SPOKEN DIALOGUE (what ${charName} says out loud): address them naturally as "you" — e.g. "Do you want it cooked or raw?"\n`;
   } else {
     preamble += `3. In narration use the user's name. In your character's spoken dialogue you may say "you" naturally.\n`;
   }
@@ -1500,11 +1502,11 @@ function buildAPIMessages() {
 
   // ── Closing hard rule (last thing the model reads) ────────────
   if (userName) {
-    systemContent += `\n\n[WRITING RULE] Narration uses "${userName}". ${charName}'s spoken words use "you".`;
+    systemContent += `\n\n[WRITING RULE] Narration: use pronouns (he/she/they) mostly, name "${userName}" occasionally, NEVER "you/your". ${charName}'s spoken words use "you".`;
     systemContent += `\nCORRECT: *He slid the plate across.* "Do you want it cooked or raw?" — dialogue says "you" ✓`;
-    systemContent += `\nCORRECT: ${userName}'s eyes met his across the table. — narration says "${userName}" ✓`;
-    systemContent += `\nWRONG: "Does ${userName} want it cooked?" — never use the name inside your own spoken dialogue ✗`;
-    systemContent += `\nWRONG: You feel his gaze. — never use "you" in narration ✗`;
+    systemContent += `\nCORRECT: ${userName} met his gaze, then looked away as his cheeks flushed. — name once, then pronouns ✓`;
+    systemContent += `\nWRONG: ${userName}'s gaze met his as ${userName}'s cheeks flushed and ${userName} looked away. — name spammed ✗`;
+    systemContent += `\nWRONG: You feel his gaze. — never "you" in narration ✗`;
   } else {
     systemContent += `\n\n[WRITING RULE] Use the user's name in narration. Use "you" naturally in your character's spoken dialogue.`;
   }
@@ -1540,7 +1542,7 @@ function buildAPIMessages() {
     // Remind the model right before it responds — strongest position in context
     if (m.role === 'user' && i === kept.length - 1) {
       const namePart = userName
-        ? ` Don't act for ${userName} — only react. Narrate with "${userName}", speak with "you".`
+        ? ` Don't act for ${userName} — only react. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; don't repeat "${userName}" every sentence. In dialogue, say "you".`
         : '';
       content += `\n\n[Reply: advance the scene with ${charName}'s OWN actions and choices — do something, make a move, let events happen. Do NOT end with a question or fish for input.${namePart}]`;
     }
