@@ -1469,8 +1469,8 @@ function buildAPIMessages() {
     preamble += `   WRONG: "${userName} trots back into the room and breaks into a run toward me." — you moved the user's character. ✗\n`;
     preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
   }
-  preamble += `2. Keep replies SHORT and punchy — 1 to 2 short paragraphs, no more. ${charName} should TALK (real dialogue) and do one or two concrete things. NEVER repeat the same action or phrase within a reply (e.g. don't mention stroking hair more than once; don't reuse "I smile, feeling a sense of..."). No flowery filler, no stacked adjectives, no mood-painting. Lean and natural, like a real person.\n`;
-  preamble += `2b. DRIVE THE SCENE with dialogue and decisions. ${charName} says things and does things — don't just silently emote. Don't ask the user questions or end every reply with a question. Speak and act, then stop.\n`;
+  preamble += `2. Write about 2 solid paragraphs — substantial enough to carry the scene, but not bloated. ${charName} should TALK (real dialogue) and do concrete things. NEVER repeat the same action or phrase within a reply. No flowery filler, no stacked adjectives, no aimless mood-painting. Lean, natural, and purposeful.\n`;
+  preamble += `2b. STAY ON THE PLOT. Keep continuity with what has actually been happening in the story — the situation, goals, tension, and where the characters are. Move that storyline forward; do not drift into disconnected, plotless filler (random naps, blankets, petting) that ignores the scene. ${charName} drives the scene with dialogue and decisions, never ending on a question.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
     preamble += `   - NARRATION (descriptive prose): refer to the user with NATURAL PRONOUNS (he/she/they, his/her/their) most of the time, and the name "${userName}" only occasionally for clarity. NEVER use "you/your" in narration. Do NOT repeat "${userName}" in every sentence — that reads robotic.\n`;
@@ -1523,18 +1523,39 @@ function buildAPIMessages() {
   // Groq's free tier has a tight tokens-per-minute cap, so keep requests
   // small there (more messages before the limit). Other providers get more.
   const provider = settings.provider || 'deepseek';
-  const TOKEN_BUDGET = provider === 'groq' ? 2200 : 7000; // input tokens incl. history
+  const TOKEN_BUDGET = provider === 'groq' ? 3400 : 7000; // input tokens incl. history
   const estTokens = s => Math.ceil((s || '').length / 4);
   const sysTokens = estTokens(systemContent);
-  let budget = Math.max(600, TOKEN_BUDGET - sysTokens);
+  let budget = Math.max(800, TOKEN_BUDGET - sysTokens);
 
   const all = currentChat.messages;
   const kept = [];
-  for (let i = all.length - 1; i >= 0; i--) {
+
+  // Always anchor the opening message(s) so the core scenario/plot is never
+  // forgotten, even on long chats with a small context window.
+  const anchorCount = Math.min(2, all.length);
+  const anchors = all.slice(0, anchorCount);
+  const anchorTokens = anchors.reduce((sum, m) => sum + estTokens(m.content), 0);
+  budget -= anchorTokens;
+
+  // Fill remaining budget with the most recent messages (excluding anchors)
+  for (let i = all.length - 1; i >= anchorCount; i--) {
     const t = estTokens(all[i].content);
     if (kept.length && budget - t < 0) break;  // always keep at least the latest
     budget -= t;
     kept.unshift(all[i]);
+  }
+
+  // Prepend the anchors (with a marker) if there's a gap before the recent run
+  if (anchorCount > 0) {
+    const firstKeptIdx = all.length - kept.length;
+    if (firstKeptIdx > anchorCount) {
+      // there is a gap — keep anchors as scene-setting context
+      kept.unshift(...anchors);
+    } else {
+      // recent run already reaches the start — just use everything from 0
+      for (let i = firstKeptIdx - 1; i >= 0; i--) kept.unshift(all[i]);
+    }
   }
 
   kept.forEach((m, i) => {
@@ -1544,7 +1565,7 @@ function buildAPIMessages() {
       const namePart = userName
         ? ` Don't act for ${userName} — only react. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; don't repeat "${userName}" every sentence. In dialogue, say "you".`
         : '';
-      content += `\n\n[Reply: 1-2 SHORT paragraphs, no more. ${charName} speaks (real dialogue) and does one or two things. No repeating an action/phrase, no flowery filler, no ending on a question.${namePart}]`;
+      content += `\n\n[Reply: ~2 paragraphs. Stay consistent with the actual ongoing plot/situation and move it forward — no disconnected filler. ${charName} speaks (real dialogue) and does concrete things. No repeating an action/phrase, no flowery filler, no ending on a question.${namePart}]`;
     }
     messages.push({ role: m.role, content });
   });
