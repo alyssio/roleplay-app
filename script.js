@@ -249,6 +249,27 @@ function toast(msg, type = '', duration = 3000) {
   }, duration);
 }
 
+// Turn raw API/network errors into something a human can act on.
+function friendlyError(err) {
+  const raw = (err && err.message ? err.message : String(err)) || '';
+  const m = raw.toLowerCase();
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed') || m.includes('cors'))
+    return 'Network error — check your internet connection and try again.';
+  if (m.includes('401') || m.includes('unauthorized') || m.includes('invalid key') || m.includes('api key not valid'))
+    return 'API key rejected — double-check your key in Settings.';
+  if (m.includes('403') || m.includes('forbidden') || m.includes('location') || m.includes('permission'))
+    return 'Blocked by the provider (key restriction or region). Check your provider/account settings.';
+  if (m.includes('429') || m.includes('rate') || m.includes('quota') || m.includes('too many'))
+    return 'Rate limited — wait ~30–60s, then try again. Free tiers cap how fast you can send.';
+  if (m.includes('no endpoints') || m.includes('404') || m.includes('not found') || m.includes('does not exist'))
+    return "That model isn't available on your key — pick a different model in Settings.";
+  if (m.includes('too large') || m.includes('context length') || m.includes('maximum context') || m.includes('413'))
+    return 'The chat got too long for this model — clear or shorten it, then try again.';
+  if (m.includes('500') || m.includes('502') || m.includes('503') || m.includes('overloaded') || m.includes('unavailable'))
+    return 'The AI provider is having a moment (server error). Try again shortly.';
+  return raw || 'Something went wrong.';
+}
+
 // ─────────────────────────────────────────────
 // CONFIRM DIALOG
 // ─────────────────────────────────────────────
@@ -1339,7 +1360,7 @@ async function streamAIResponse() {
   } catch (err) {
     console.error(err);
     typingRow.remove();
-    toast('Error: ' + err.message, 'error', 5000);
+    toast(friendlyError(err), 'error', 6000);
   }
 
   isStreaming = false;
@@ -1646,7 +1667,7 @@ async function importData(file) {
     toast('Data imported successfully.', 'success');
 
   } catch (err) {
-    toast('Import failed: ' + err.message, 'error');
+    toast('Import failed: ' + friendlyError(err), 'error', 6000);
   }
 }
 
@@ -1895,7 +1916,7 @@ async function init() {
         if (data.discoverState) localStorage.setItem('discover-state', JSON.stringify(data.discoverState));
         toast(`Hidden list imported — ${data.hiddenBots.length} bots merged.`, 'success');
         loadDailyDiscovery();
-      } catch (err) { toast('Import failed: ' + err.message, 'error'); }
+      } catch (err) { toast('Import failed: ' + friendlyError(err), 'error', 6000); }
     });
   });
 
@@ -2244,7 +2265,7 @@ Return ONLY the JSON object, no markdown, no explanation.`;
     document.getElementById('import-review-backdrop').classList.add('open');
 
   } catch (err) {
-    toast('Error: ' + err.message, 'error', 5000);
+    toast(friendlyError(err), 'error', 6000);
   }
 
   btn.disabled    = false;
@@ -2423,7 +2444,7 @@ async function sendRosieMessage() {
     rosieHistory.push({ role: 'assistant', content: accumulated });
 
   } catch (err) {
-    bubble.textContent = 'oops, something went wrong 😓 — ' + err.message;
+    bubble.textContent = 'oops, something went wrong 😓 — ' + friendlyError(err);
   }
 
   rosieStreaming = false;
