@@ -1362,6 +1362,7 @@ async function streamAIResponse() {
     }
     if (slipped) accumulated = scrubUserRoleplay(accumulated);
     accumulated = scrubYouSlip(accumulated);
+    accumulated = deTagQuestion(accumulated);
 
     // Remove typing indicator and pop in full response
     typingRow.remove();
@@ -1422,6 +1423,17 @@ function scrubUserRoleplay(text) {
   });
 
   return clean.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Turn passive trailing tag-questions into statements:
+// "You're feeling better, aren't you?" -> "You're feeling better."
+// "That's nice, right?" -> "That's nice."
+function deTagQuestion(text) {
+  const tags = "aren't|isn't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|couldn't|shouldn't|haven't|hasn't|hadn't|aint|ain't|right|yeah|hm+|huh|no|okay|ok";
+  const pron = "you|they|it|we|he|she|i";
+  // ", <tag> <pronoun>?" optionally followed by closing quote/space
+  const re = new RegExp(`,\\s*(?:${tags})(?:\\s+(?:${pron}))?\\s*\\?(["”'’]?)`, 'gi');
+  return text.replace(re, '.$1');
 }
 
 function scrubYouSlip(text) {
