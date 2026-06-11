@@ -297,12 +297,14 @@ function closeSettings() {
 
 // Provider configs
 const PROVIDERS = {
+  groq:       { label: 'Groq API Key (free, no card)', placeholder: 'gsk_…', endpoint: 'https://api.groq.com/openai/v1/chat/completions' },
   google:     { label: 'Google AI Studio Key', placeholder: 'AIza… (free, no card)', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' },
   deepseek:   { label: 'DeepSeek API Key', placeholder: 'sk-…',     endpoint: 'https://api.deepseek.com/v1/chat/completions' },
   openrouter: { label: 'OpenRouter API Key', placeholder: 'sk-or-…', endpoint: 'https://openrouter.ai/api/v1/chat/completions' },
 };
 
 const PROVIDER_MODELS = {
+  groq:       ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   google:     ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'],
   deepseek:   ['deepseek-chat', 'deepseek-reasoner'],
   openrouter: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
@@ -310,6 +312,8 @@ const PROVIDER_MODELS = {
 
 // Friendly labels for the model dropdown
 const MODEL_LABELS = {
+  'llama-3.3-70b-versatile':         'Llama 3.3 70B — FREE (smart, best for RP) ⭐',
+  'llama-3.1-8b-instant':            'Llama 3.1 8B — FREE (fastest, lighter)',
   'gemini-2.0-flash-lite':           'Gemini 2.0 Flash-Lite — FREE (highest limit) ⭐',
   'gemini-2.0-flash':                'Gemini 2.0 Flash — FREE (best for RP)',
   'gemini-2.5-flash':                'Gemini 2.5 Flash — FREE (newest, lower limit)',
@@ -396,10 +400,17 @@ async function saveSettings({ silent = false, close = false } = {}) {
 
   if (!model) { if (!silent) toast('Please enter a model ID.', 'error'); return; }
 
+  const curProvider = document.getElementById('provider-select').value;
+  const curKey      = document.getElementById('api-key').value.trim();
+  // Remember a key per provider so switching providers never loses one
+  const apiKeys = { ...(settings.apiKeys || {}) };
+  apiKeys[curProvider] = curKey;
+
   settings = {
     id:          'app',
-    provider:    document.getElementById('provider-select').value,
-    apiKey:      document.getElementById('api-key').value.trim(),
+    provider:    curProvider,
+    apiKey:      curKey,
+    apiKeys,
     visionKey:   document.getElementById('vision-key').value.trim(),
     model,
     temperature: parseFloat(document.getElementById('temperature').value),
@@ -1681,7 +1692,16 @@ async function init() {
   });
 
   document.getElementById('provider-select').addEventListener('change', (e) => {
-    updateProviderUI(e.target.value);
+    const newProvider = e.target.value;
+    // Stash the key currently in the box under the OLD provider, then load
+    // the remembered key for the NEW provider so nothing gets overwritten.
+    const keyField = document.getElementById('api-key');
+    const prevProvider = settings.provider || 'deepseek';
+    settings.apiKeys = { ...(settings.apiKeys || {}) };
+    settings.apiKeys[prevProvider] = keyField.value.trim();
+    keyField.value = settings.apiKeys[newProvider] || '';
+    settings.provider = newProvider;
+    updateProviderUI(newProvider);
     scheduleAutoSave();
   });
 
