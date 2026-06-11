@@ -88,7 +88,11 @@ function dbPut(store, value) {
   return new Promise((resolve, reject) => {
     const tx  = db.transaction(store, 'readwrite');
     const req = tx.objectStore(store).put(value);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Keep the local recovery snapshot fresh after any content change
+      if (store === 'characters' || store === 'chats') scheduleLocalSnapshot();
+      resolve(req.result);
+    };
     req.onerror   = () => reject(req.error);
   });
 }
@@ -1614,6 +1618,7 @@ async function exportData() {
   a.download = `roleplay-backup-${Date.now()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  localStorage.setItem('rp-last-backup', Date.now().toString());
   toast('Data exported.', 'success');
 }
 
@@ -1674,15 +1679,89 @@ async function migrateAvatars() {
   } catch { /* silent — migration is best-effort */ }
 }
 
+// ─────────────────────────────────────────────
+// DATA SAFETY — prevent the silent IndexedDB eviction that caused data loss
+// ─────────────────────────────────────────────
+
+// Ask the browser to mark our storage persistent so it won't be evicted
+// under storage pressure (the thing that wiped the old characters).
+async function requestPersistentStorage() {
+  try {
+    if (!navigator.storage?.persist) return;
+    if (await navigator.storage.persisted?.()) return; // already persistent
+    await navigator.storage.persist();
+  } catch { /* not supported — best effort */ }
+}
+
+// Warn before the browser starts evicting, not after.
+async function checkStorageHealth() {
+  try {
+    if (!navigator.storage?.estimate) return;
+    const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+    if (quota && usage / quota > 0.85) {
+      toast('⚠️ Storage almost full — export a backup soon so nothing gets lost.', 'error', 9000);
+    }
+  } catch {}
+}
+
+// Rolling text-only snapshot in localStorage as a last-ditch recovery if the
+// IndexedDB is cleared. Avatars/images are stripped to stay within limits.
+let _snapshotTimer = null;
+function scheduleLocalSnapshot() {
+  clearTimeout(_snapshotTimer);
+  _snapshotTimer = setTimeout(saveLocalSnapshot, 3000);
+}
+async function saveLocalSnapshot() {
+  try {
+    if (!db) return;
+    const chars = (await dbGetAll('characters')).map(c => ({ ...c, avatar: null }));
+    const chats = await dbGetAll('chats');
+    localStorage.setItem('rp-snapshot', JSON.stringify({ characters: chars, chats, savedAt: Date.now() }));
+  } catch { /* quota or serialization issue — skip */ }
+}
+
+// On startup, if the DB looks empty but a snapshot exists, offer to restore.
+async function checkRecovery() {
+  try {
+    if (characters.length > 0) return;
+    const raw = localStorage.getItem('rp-snapshot');
+    if (!raw) return;
+    const snap = JSON.parse(raw);
+    const hasData = snap?.characters?.length || snap?.chats?.length;
+    if (!hasData) return;
+    const when = new Date(snap.savedAt).toLocaleString();
+    const ok = await confirm(`Your characters are empty, but a local backup from ${when} was found. Restore it?\n\n(Text is recovered; avatars may need re-adding.)`);
+    if (!ok) return;
+    for (const c of (snap.characters || [])) await dbPut('characters', c);
+    for (const ch of (snap.chats || [])) await dbPut('chats', ch);
+    await loadCharacters();
+    toast('Recovered from local snapshot. Export a full backup now to be safe.', 'success', 7000);
+  } catch {}
+}
+
+// Gentle reminder to export a real (file) backup if it's been a while.
+function backupReminder() {
+  try {
+    const last = parseInt(localStorage.getItem('rp-last-backup') || '0', 10);
+    if (!last || (Date.now() - last) / 86400000 > 3) {
+      toast('💾 Tip: tap the ↑ export button now and then to keep a safe backup.', '', 6000);
+    }
+  } catch {}
+}
+
 async function init() {
   db       = await openDB();
+  await requestPersistentStorage();
   settings = (await dbGet('settings', 'app')) || { id: 'app' };
   await loadCharacters();
+  await checkRecovery();
 
   applyChatBg();
 
   // Run avatar compression migration in background after UI is ready
   setTimeout(migrateAvatars, 2000);
+  setTimeout(checkStorageHealth, 3000);
+  setTimeout(backupReminder, 4500);
 
   // Restore last chat if the page was refreshed mid-chat
   const savedChat = (() => { try { return JSON.parse(sessionStorage.getItem('activeChat')); } catch { return null; } })();
