@@ -384,8 +384,8 @@ function populateSettingsForm() {
   document.getElementById('provider-select').value     = provider;
   document.getElementById('api-key').value             = settings.apiKey      || '';
   document.getElementById('vision-key').value          = settings.visionKey   || '';
-  document.getElementById('temperature').value         = settings.temperature ?? 0.8;
-  document.getElementById('temp-display').textContent  = settings.temperature ?? 0.8;
+  document.getElementById('temperature').value         = settings.temperature ?? 0.6;
+  document.getElementById('temp-display').textContent  = settings.temperature ?? 0.6;
   document.getElementById('persona-name').value        = settings.persona?.name        || '';
   document.getElementById('persona-desc').value        = settings.persona?.description || '';
   document.getElementById('ooc-enabled').checked       = settings.oocEnabled ?? true;
@@ -1290,7 +1290,7 @@ async function streamAIResponse() {
   try {
     const messages = buildAPIMessages();
     const model    = settings.model || 'google/gemini-2.0-flash-001';
-    const temp     = settings.temperature ?? 0.8;
+    const temp     = settings.temperature ?? 0.6;
     const provider = settings.provider || 'deepseek';
     // Cap reply length on Groq's tight free tier so output tokens don't blow
     // the per-minute budget; still long enough for 4-6 paragraphs.
@@ -1855,6 +1855,18 @@ async function init() {
   db       = await openDB();
   await requestPersistentStorage();
   settings = (await dbGet('settings', 'app')) || { id: 'app' };
+
+  // One-time: lower temperature to 0.6 for tighter, less rambly output.
+  // Only touches the old 0.8 default; leaves any custom value alone.
+  if (!localStorage.getItem('temp-lowered-v1')) {
+    if ((settings.temperature ?? 0.8) >= 0.8) {
+      settings.temperature = 0.6;
+      settings.id = 'app';
+      await dbPut('settings', settings);
+    }
+    localStorage.setItem('temp-lowered-v1', '1');
+  }
+
   await loadCharacters();
   await checkRecovery();
 
