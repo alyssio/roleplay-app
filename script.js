@@ -2613,10 +2613,10 @@ function getVisionConfig() {
   if (settings.visionKey) {
     return { endpoint: 'https://openrouter.ai/api/v1/chat/completions', key: settings.visionKey.trim(), model: 'meta-llama/llama-3.2-11b-vision-instruct:free' };
   }
+  // NOTE: deliberately NOT using a Google chat key here. On Google's free
+  // tier, avatar checks share the same daily quota as chat, so browsing
+  // would starve chatting. Vision only runs with a dedicated/OpenRouter key.
   const provider = settings.provider || 'deepseek';
-  if (provider === 'google' && settings.apiKey) {
-    return { endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', key: settings.apiKey.trim(), model: 'gemini-2.0-flash' };
-  }
   if (provider === 'openrouter' && settings.apiKey) {
     return { endpoint: 'https://openrouter.ai/api/v1/chat/completions', key: settings.apiKey.trim(), model: 'meta-llama/llama-3.2-11b-vision-instruct:free' };
   }
