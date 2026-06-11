@@ -1468,12 +1468,28 @@ function buildAPIMessages() {
 
   const messages = [{ role: 'system', content: systemContent }];
 
-  // ── Chat history ───────────────────────────────────────────────
-  const history = [...currentChat.messages];
-  history.forEach((m, i) => {
+  // ── Chat history (recent only) ─────────────────────────────────
+  // Sending the entire history blows past per-request token limits on long
+  // chats. Keep the most recent messages that fit a rough token budget,
+  // estimating ~4 chars/token. Budget leaves headroom for the reply.
+  const TOKEN_BUDGET = 7000;                 // input tokens for history
+  const estTokens = s => Math.ceil((s || '').length / 4);
+  const sysTokens = estTokens(systemContent);
+  let budget = Math.max(1500, TOKEN_BUDGET - sysTokens);
+
+  const all = currentChat.messages;
+  const kept = [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    const t = estTokens(all[i].content);
+    if (kept.length && budget - t < 0) break;  // always keep at least the latest
+    budget -= t;
+    kept.unshift(all[i]);
+  }
+
+  kept.forEach((m, i) => {
     let content = fillPlaceholders(m.content);
     // Remind the model right before it responds — narration vs dialogue distinction
-    if (m.role === 'user' && i === history.length - 1 && userName) {
+    if (m.role === 'user' && i === kept.length - 1 && userName) {
       content += `\n\n[Reminder: narration → "${userName}". Your spoken dialogue → "you".]`;
     }
     messages.push({ role: m.role, content });
