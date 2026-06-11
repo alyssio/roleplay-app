@@ -1415,36 +1415,25 @@ function scrubUserRoleplay(text) {
   return clean.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function detectsYouSlip(text) {
-  // Only flag possessives and contractions — bare "you" is allowed in dialogue
-  return /\byour\b|\byours\b|\byourself\b|\byou're\b|\byou've\b|\byou'll\b|\byou'd\b/i.test(text);
-}
-
 function scrubYouSlip(text) {
   const name = (settings.persona?.name || '').trim();
   if (!name) return text;
   const sub = (s) => s
-    // Contractions — straight and curly apostrophes both
-    .replace(/\byou’re\b/gi, `${name} is`)
-    .replace(/\byou're\b/gi,      `${name} is`)
-    .replace(/\byou’ve\b/gi, `${name} has`)
-    .replace(/\byou've\b/gi,      `${name} has`)
-    .replace(/\byou’ll\b/gi, `${name} will`)
-    .replace(/\byou'll\b/gi,      `${name} will`)
-    .replace(/\byou’d\b/gi,  `${name} would`)
-    .replace(/\byou'd\b/gi,       `${name} would`)
-    // Possessives — safe to replace anywhere, almost never appear in dialogue
-    .replace(/\byourself\b/gi,    name)
-    .replace(/\byours\b/gi,       `${name}'s`)
-    .replace(/\byour\b/gi,        `${name}'s`);
-    // NOTE: bare “you” intentionally NOT replaced here — the model is
-    // instructed via system prompt, and replacing bare “you” blindly
-    // corrupts character dialogue (“You have to understand” → “Azrael have to understand”)
-  return text.replace(/(“[^”]*”|”[^”]*”|'[^']*')|([^”'“”]+)/g, (m, quoted, prose) => {
-    if (quoted) return quoted;
-    if (prose)  return sub(prose);
-    return m;
-  });
+    // Contractions (straight and curly apostrophes)
+    .replace(/\byou['’]re\b/gi, `${name} is`)
+    .replace(/\byou['’]ve\b/gi, `${name} has`)
+    .replace(/\byou['’]ll\b/gi, `${name} will`)
+    .replace(/\byou['’]d\b/gi,  `${name} would`)
+    .replace(/\byourself\b/gi,  name)
+    .replace(/\byours\b/gi,     `${name}'s`)
+    .replace(/\byour\b/gi,      `${name}'s`)
+    .replace(/\byou\b/gi,       name);
+
+  // ONLY rewrite inside *asterisk* narration. There, "you/your" is
+  // unambiguously about the user and safe to replace. Plain prose and
+  // dialogue (quoted OR unquoted) are left untouched, because "your" in
+  // speech ("take your time") is correct and scrubbing it mangles the line.
+  return text.replace(/\*([^*]+)\*/g, (m, inner) => `*${sub(inner)}*`);
 }
 
 function buildAPIMessages() {
