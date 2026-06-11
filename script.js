@@ -1525,9 +1525,12 @@ function buildAPIMessages() {
 
   kept.forEach((m, i) => {
     let content = fillPlaceholders(m.content);
-    // Remind the model right before it responds — narration vs dialogue + don't control the user
-    if (m.role === 'user' && i === kept.length - 1 && userName) {
-      content += `\n\n[Reminder: Do NOT move or act for ${userName} — only react. Narration → "${userName}", your spoken dialogue → "you".]`;
+    // Remind the model right before it responds — strongest position in context
+    if (m.role === 'user' && i === kept.length - 1) {
+      const namePart = userName
+        ? ` Don't act for ${userName} — only react. Narrate with "${userName}", speak with "you".`
+        : '';
+      content += `\n\n[Reply: advance the scene with ${charName}'s OWN actions and choices — do something, make a move, let events happen. Do NOT end with a question or fish for input.${namePart}]`;
     }
     messages.push({ role: m.role, content });
   });
