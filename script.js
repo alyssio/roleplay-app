@@ -1291,10 +1291,16 @@ async function streamAIResponse() {
     const messages = buildAPIMessages();
     const model    = settings.model || 'google/gemini-2.0-flash-001';
     const temp     = settings.temperature ?? 0.8;
+    const provider = settings.provider || 'deepseek';
+    // Cap reply length on Groq's tight free tier so output tokens don't blow
+    // the per-minute budget; still long enough for 4-6 paragraphs.
+    const maxTokens = provider === 'groq' ? 1100 : undefined;
 
     const fetchOnce = async () => {
       // One request per send. Do NOT auto-retry 429 — that just burns more
       // of the free-tier quota and keeps the rate-limit window saturated.
+      const body = { model, temperature: temp, stream: true, messages };
+      if (maxTokens) body.max_tokens = maxTokens;
       const response = await fetch(getEndpoint(), {
         method: 'POST',
         headers: {
@@ -1303,12 +1309,12 @@ async function streamAIResponse() {
           'HTTP-Referer':  window.location.href,
           'X-Title':       'Roleplay Chat',
         },
-        body: JSON.stringify({ model, temperature: temp, stream: true, messages }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         const msg = response.status === 429
-          ? 'Rate limited by Google. Wait ~60s without sending anything, then send once.'
+          ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
           : (err?.error?.message || `HTTP ${response.status}`);
         throw new Error(msg);
       }
@@ -1501,10 +1507,13 @@ function buildAPIMessages() {
   // Sending the entire history blows past per-request token limits on long
   // chats. Keep the most recent messages that fit a rough token budget,
   // estimating ~4 chars/token. Budget leaves headroom for the reply.
-  const TOKEN_BUDGET = 7000;                 // input tokens for history
+  // Groq's free tier has a tight tokens-per-minute cap, so keep requests
+  // small there (more messages before the limit). Other providers get more.
+  const provider = settings.provider || 'deepseek';
+  const TOKEN_BUDGET = provider === 'groq' ? 2200 : 7000; // input tokens incl. history
   const estTokens = s => Math.ceil((s || '').length / 4);
   const sysTokens = estTokens(systemContent);
-  let budget = Math.max(1500, TOKEN_BUDGET - sysTokens);
+  let budget = Math.max(600, TOKEN_BUDGET - sysTokens);
 
   const all = currentChat.messages;
   const kept = [];
