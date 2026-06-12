@@ -1502,17 +1502,10 @@ function buildAPIMessages() {
 
   // ── Closing hard rule (last thing the model reads) ────────────
   if (userName) {
-    systemContent += `\n\n[WRITING RULE] Narration: use pronouns (he/she/they) mostly, name "${userName}" occasionally, NEVER "you/your". ${charName}'s spoken words use "you".`;
-    systemContent += `\nCORRECT: *He slid the plate across.* "Do you want it cooked or raw?" — dialogue says "you" ✓`;
-    systemContent += `\nCORRECT: ${userName} met his gaze, then looked away as his cheeks flushed. — name once, then pronouns ✓`;
-    systemContent += `\nWRONG: ${userName}'s gaze met his as ${userName}'s cheeks flushed and ${userName} looked away. — name spammed ✗`;
-    systemContent += `\nWRONG: You feel his gaze. — never "you" in narration ✗`;
+    systemContent += `\n\n[WRITING RULE] Narration: pronouns (he/she/they) mostly, "${userName}" occasionally, never "you/your". Dialogue: "you" is fine. Don't spam the name.`;
   } else {
-    systemContent += `\n\n[WRITING RULE] Use the user's name in narration. Use "you" naturally in your character's spoken dialogue.`;
+    systemContent += `\n\n[WRITING RULE] Narration uses the user's name/pronouns, never "you". Dialogue uses "you" naturally.`;
   }
-
-  // ── History disclaimer ─────────────────────────────────────────
-  systemContent += `\n\nIMPORTANT: Older messages in this conversation may contain writing errors — "you" used in narration, actions written for the user, short replies. Those are mistakes. Do not treat them as examples of how to write. Always follow the rules above, regardless of what earlier messages look like.`;
 
   const messages = [{ role: 'system', content: systemContent }];
 
@@ -1523,7 +1516,9 @@ function buildAPIMessages() {
   // Groq's free tier has a tight tokens-per-minute cap, so keep requests
   // small there (more messages before the limit). Other providers get more.
   const provider = settings.provider || 'deepseek';
-  const TOKEN_BUDGET = provider === 'groq' ? 3400 : 7000; // input tokens incl. history
+  // Groq free tier is ~12k tokens/min. Smaller requests = more messages
+  // before the limit. The opening anchor keeps the plot even with a small window.
+  const TOKEN_BUDGET = provider === 'groq' ? 2400 : 7000; // input tokens incl. history
   const estTokens = s => Math.ceil((s || '').length / 4);
   const sysTokens = estTokens(systemContent);
   let budget = Math.max(800, TOKEN_BUDGET - sysTokens);
