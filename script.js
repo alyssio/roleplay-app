@@ -1398,6 +1398,8 @@ function detectsUserRoleplay(text) {
     patterns.push(new RegExp(`\\*${escaped}\\s+\\w`, 'i'));
     patterns.push(new RegExp(`^${escaped}:\\s`, 'im'));
     patterns.push(new RegExp(`^${escaped}\\s+\\w+`, 'im')); // Name walks... (plain prose)
+    // Name + a speech/action verb ANYWHERE = fabricating the user's turn
+    patterns.push(new RegExp(`\\b${escaped}\\s+(says?|said|asks?|asked|replies|replied|answers?|answered|responds?|responded|whispers?|whispered|mutters?|muttered|shouts?|shouted|nods?|nodded|shakes?\\s+his|shrugs?|shrugged|laughs?|laughed|grins?|grinned)\\b`, 'i'));
   }
   return patterns.some(p => p.test(text));
 }
@@ -1464,13 +1466,14 @@ function buildAPIMessages() {
   // ── Preamble (read before character card) ──────────────────────
   let preamble = `You are roleplaying as ${charName}. Stay fully in character at all times.\n\n`;
   preamble += `ROLEPLAY RULES:\n`;
-  preamble += `1. Only write for ${charName}. NEVER decide, narrate, or author what ${userName || 'the user'} does, says, thinks, or how they move — that is the user's role entirely, even mid-sentence.\n`;
+  preamble += `1. Only write for ${charName}. NEVER write ${userName || 'the user'}'s dialogue, actions, thoughts, decisions, or movements — not even one line, not even mid-sentence. Do NOT put words in their mouth or continue their turn for them. End your reply where ${charName}'s part ends and let ${userName || 'the user'} respond. This is the most important rule.\n`;
   if (userName) {
-    preamble += `   WRONG: "${userName} trots back into the room and breaks into a run toward me." — you moved the user's character. ✗\n`;
-    preamble += `   RIGHT: React to what ${userName} already did, and describe only YOUR character + the surroundings. You may describe how ${userName} looks or appears, but never choose their actions. ✓\n`;
+    preamble += `   WRONG: "${userName} nods and says 'okay, let's go.'" — you wrote the user's line. ✗\n`;
+    preamble += `   WRONG: "${userName} trots back into the room and runs toward me." — you moved the user's character. ✗\n`;
+    preamble += `   RIGHT: React to what ${userName} already did/said, describe only YOUR character + the surroundings, then stop and wait. ✓\n`;
   }
   preamble += `2. Keep replies SHORT — usually ONE short paragraph (3-5 sentences), occasionally two if truly needed. Be concise. VARY your sentence structure — do NOT begin sentence after sentence with "I" or "${charName}". Don't narrate every tiny physical motion; pick only the meaningful beats. Cut emotional cliches entirely: no "a sense of X washed over me", no "voice filled with love/reassurance", no "warmth and gentle purrs". Real, varied, economical prose — not a stream of "I did this, I felt that".\n`;
-  preamble += `2b. ADVANCE THE PLOT — this is the most important rule. Whatever goal/tension/situation is active (e.g. the supplements), PURSUE it. Do not name a goal and then abandon it for naps, blankets, cuddling, or "let's just rest". Make the story progress: introduce a development, a complication, a decision, a real event. ${charName} drives it with dialogue and action. Never end on a question.\n`;
+  preamble += `2b. RESPOND TO THE USER FIRST. Always directly react to what ${userName || 'the user'} just said and did — acknowledge their words, answer their questions, respond to their actions. Never ignore their message or steamroll past it with your own pre-planned story. AFTER reacting, you may naturally nudge the scene forward a little — but the user leads, you respond. Don't railroad. Keep continuity with the situation, and don't abandon an active goal for aimless filler.\n`;
   if (userName) {
     preamble += `3. Narration vs dialogue — this is critical:\n`;
     preamble += `   - NARRATION (descriptive prose): refer to the user with NATURAL PRONOUNS (he/she/they, his/her/their) most of the time, and the name "${userName}" only occasionally for clarity. NEVER use "you/your" in narration. Do NOT repeat "${userName}" in every sentence — that reads robotic.\n`;
@@ -1559,9 +1562,9 @@ function buildAPIMessages() {
     // Remind the model right before it responds — strongest position in context
     if (m.role === 'user' && i === kept.length - 1) {
       const namePart = userName
-        ? ` Don't act for ${userName} — only react. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; don't repeat "${userName}" every sentence. In dialogue, say "you".`
+        ? ` Do NOT write ${userName}'s dialogue, actions, or responses — stop and let ${userName} reply. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; in dialogue say "you".`
         : '';
-      content += `\n\n[Reply: SHORT — 1 paragraph (3-5 sentences). Stay on the actual plot and move it forward. ${charName} speaks (real dialogue) and does something concrete. No filler, no repeating, no ending on a question.${namePart}]`;
+      content += `\n\n[Reply: React DIRECTLY to what was just said/done above — don't ignore it or skip ahead. SHORT, 1 paragraph (3-5 sentences). ${charName} responds with real dialogue and action, then nudges the scene only a little. The user leads; you respond. No filler, no repeating.${namePart}]`;
     }
     messages.push({ role: m.role, content });
   });
