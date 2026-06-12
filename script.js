@@ -1500,7 +1500,7 @@ function buildAPIMessages() {
 
   // ── OOC ───────────────────────────────────────────────────────
   if (settings.oocEnabled ?? true) {
-    systemContent += `\n\nIf the user sends [OOC: ...], respond:\n[OOC]: your reply here.\nThen flow back into the scene in character with no label.`;
+    systemContent += `\n\nOUT OF CHARACTER (OOC): When the user writes "[OOC: ...]" or "(OOC: ...)", they are the writer talking to you directly — NOT roleplay. STOP roleplaying. Reply only as the assistant, starting with "[OOC]:", and actually do/answer what they ask. Do NOT narrate, do NOT continue the scene, do NOT stay in character. Just respond to their request plainly. Resume the roleplay only on their next normal (non-OOC) message.`;
   }
 
   // ── Closing hard rule (last thing the model reads) ────────────
@@ -1557,14 +1557,20 @@ function buildAPIMessages() {
     }
   }
 
+  const oocRe = /[\[(]\s*ooc\s*:/i;
   kept.forEach((m, i) => {
     let content = fillPlaceholders(m.content);
     // Remind the model right before it responds — strongest position in context
     if (m.role === 'user' && i === kept.length - 1) {
-      const namePart = userName
-        ? ` Do NOT write ${userName}'s dialogue, actions, or responses — stop and let ${userName} reply. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; in dialogue say "you".`
-        : '';
-      content += `\n\n[Reply: React DIRECTLY to what was just said/done above — don't ignore it or skip ahead. SHORT, 1 paragraph (3-5 sentences). ${charName} responds with real dialogue and action, then nudges the scene only a little. The user leads; you respond. No filler, no repeating.${namePart}]`;
+      if (oocRe.test(m.content)) {
+        // Out-of-character instruction — do not roleplay this turn
+        content += `\n\n[This is an OUT-OF-CHARACTER instruction from the writer. Do NOT roleplay or narrate. Reply only as the assistant starting with "[OOC]:", and actually follow/answer what they ask.]`;
+      } else {
+        const namePart = userName
+          ? ` Do NOT write ${userName}'s dialogue, actions, or responses — stop and let ${userName} reply. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; in dialogue say "you".`
+          : '';
+        content += `\n\n[Reply: React DIRECTLY to what was just said/done above — don't ignore it or skip ahead. SHORT, 1 paragraph (3-5 sentences). ${charName} responds with real dialogue and action, then nudges the scene only a little. The user leads; you respond. No filler, no repeating.${namePart}]`;
+      }
     }
     messages.push({ role: m.role, content });
   });
