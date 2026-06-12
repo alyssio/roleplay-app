@@ -1516,9 +1516,10 @@ function buildAPIMessages() {
   // Groq's free tier has a tight tokens-per-minute cap, so keep requests
   // small there (more messages before the limit). Other providers get more.
   const provider = settings.provider || 'deepseek';
-  // Groq free tier is ~12k tokens/min. Smaller requests = more messages
-  // before the limit. The opening anchor keeps the plot even with a small window.
-  const TOKEN_BUDGET = provider === 'groq' ? 2400 : 7000; // input tokens incl. history
+  // Groq free tier is ~12k tokens/min, so keep its requests small. DeepSeek/
+  // others have generous limits, so give them a big memory window for better
+  // continuity (feels smarter). The opening anchor preserves the core plot.
+  const TOKEN_BUDGET = provider === 'groq' ? 2400 : 12000; // input tokens incl. history
   const estTokens = s => Math.ceil((s || '').length / 4);
   const sysTokens = estTokens(systemContent);
   let budget = Math.max(800, TOKEN_BUDGET - sysTokens);
