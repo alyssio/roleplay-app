@@ -3178,7 +3178,7 @@ async function loadDailyDiscovery() {
   try {
     const params = new URLSearchParams({
       page:         dailyPage,
-      page_size:    mobileQuery.matches ? 40 : 100,
+      page_size:    40,
       content_type: 'characters',
       nsfw:         'true',
       sort:         'rating_count',
@@ -3193,9 +3193,8 @@ async function loadDailyDiscovery() {
 
     const inner    = chubData.status === 'fulfilled' ? (chubData.value.data || chubData.value) : {};
     const rawNodes = inner.nodes || inner.results || [];
-    dailyHasMore   = rawNodes.length > 0;
-
     const jaiNodes = jaiResult.status === 'fulfilled' ? jaiResult.value : [];
+    dailyHasMore   = rawNodes.length > 0 || jaiNodes.length > 0;
 
     const hiddenBots = await getHiddenBots();
 
@@ -3225,6 +3224,13 @@ async function loadDailyDiscovery() {
       jaiSlice.forEach((c, i) => allNodes.splice(Math.min(i * 6 + 3, allNodes.length), 0, c));
     }
     const nodes = allNodes;
+
+    if (!nodes.length && dailyHasMore && dailyPage < 30) {
+      dailyPage++;
+      saveDiscoverState();
+      dailyLoading = false;
+      return loadDailyDiscovery();
+    }
 
     renderDiscoverGrid(nodes, grid);
     renderDiscoverPagination();
