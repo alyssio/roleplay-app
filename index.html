@@ -651,9 +651,15 @@
   <script src="script.js?v=96"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      let refreshing = false;
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
-        .then(reg => reg.update());
-      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+        .then(reg => reg.update())
+        .catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
     }
   </script>
 </body>
