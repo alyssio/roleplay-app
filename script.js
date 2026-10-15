@@ -1312,16 +1312,24 @@ function parseChatStreamLine(line, apiKey) {
     );
     throw new Error(message || 'The AI provider returned an error in its response stream.');
   }
-  return { content: event.choices?.[0]?.delta?.content };
+  const delta = event.choices?.[0]?.delta;
+  return {
+    content: delta?.content,
+    reasoningActivity: Boolean(delta?.reasoning_content),
+  };
 }
 
 const FIRST_CHAT_CONTENT_TIMEOUT_MS = 60000;
+const DEEPSEEK_FIRST_CONTENT_TIMEOUT_MS = 10 * 60 * 1000;
 const CHAT_STREAM_IDLE_TIMEOUT_MS = 45000;
 
-function createChatStreamDeadline(controller) {
+function createChatStreamDeadline(controller, provider) {
   let timeoutError = null;
   let firstContentTimer = null;
   let idleTimer = null;
+  const firstContentTimeout = provider === 'deepseek'
+    ? DEEPSEEK_FIRST_CONTENT_TIMEOUT_MS
+    : FIRST_CHAT_CONTENT_TIMEOUT_MS;
   const aborted = new Promise((_, reject) => {
     controller.signal.addEventListener('abort', () => {
       reject(timeoutError || new Error('The AI request was aborted.'));
@@ -1334,11 +1342,20 @@ function createChatStreamDeadline(controller) {
   };
 
   firstContentTimer = setTimeout(() => {
-    abortWithError('No reply text arrived from the AI provider within 60 seconds. The stream may be stuck; check the provider status or try again.');
-  }, FIRST_CHAT_CONTENT_TIMEOUT_MS);
+    const minutes = Math.round(firstContentTimeout / 60000);
+    abortWithError(`No reply text arrived from the AI provider within ${minutes} minute${minutes === 1 ? '' : 's'}. The stream may be stuck; check the provider status or try again.`);
+  }, firstContentTimeout);
 
   return {
     aborted,
+    providerActivity() {
+      if (firstContentTimer === null) return;
+      clearTimeout(firstContentTimer);
+      firstContentTimer = setTimeout(() => {
+        const minutes = Math.round(firstContentTimeout / 60000);
+        abortWithError(`No reply text arrived from the AI provider within ${minutes} minute${minutes === 1 ? '' : 's'}. The stream may be stuck; check the provider status or try again.`);
+      }, firstContentTimeout);
+    },
     receivedFirstContent() {
       clearTimeout(firstContentTimer);
       firstContentTimer = null;
@@ -1423,7 +1440,7 @@ async function streamAIResponse() {
       let reader = null;
       let receivedContent = false;
       let streamDone = false;
-      const deadline = createChatStreamDeadline(controller);
+      const deadline = createChatStreamDeadline(controller, provider);
       try {
         const response = await Promise.race([fetch(getEndpoint(), {
           method: 'POST',
@@ -1456,6 +1473,7 @@ async function streamAIResponse() {
           const event = parseChatStreamLine(line, settings.apiKey);
           if (!event) return;
           if (event.done) { streamDone = true; return; }
+          if (event.reasoningActivity && !receivedContent) deadline.providerActivity();
           if (event.content) {
             accumulated += event.content;
             if (!receivedContent) {
