@@ -1,4 +1,4 @@
-const CACHE = 'roleplay-v81';
+const CACHE = 'roleplay-v82';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -22,14 +22,25 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Assets: network first, cache as fallback
+  const requestUrl = new URL(e.request.url);
+  const isStaticAsset = requestUrl.origin === self.location.origin
+    && ['script', 'style', 'image', 'font'].includes(e.request.destination);
+  if (!isStaticAsset) return;
+
+  // Serve cached static assets immediately while refreshing them in the background.
   e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(e.request);
+      const refresh = fetch(e.request).then(async response => {
+        if (response.ok) await cache.put(e.request, response.clone());
+        return response;
+      });
+      if (cached) {
+        e.waitUntil(refresh.then(() => undefined).catch(() => undefined));
+        return cached;
+      }
+      return refresh;
+    })()
   );
 });
