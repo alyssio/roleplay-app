@@ -331,9 +331,13 @@ const PROVIDERS = {
 const PROVIDER_MODELS = {
   groq:       ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   google:     ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'],
-  deepseek:   ['deepseek-chat', 'deepseek-reasoner'],
+  deepseek:   ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'],
   openrouter: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat-v3-0324', 'deepseek/deepseek-r1'],
 };
+
+function getDefaultModel(provider = settings.provider || 'deepseek') {
+  return PROVIDER_MODELS[provider]?.[0] || PROVIDER_MODELS.deepseek[0];
+}
 
 // Friendly labels for the model dropdown
 const MODEL_LABELS = {
@@ -342,6 +346,7 @@ const MODEL_LABELS = {
   'gemini-2.0-flash-lite':           'Gemini 2.0 Flash-Lite — FREE (highest limit) ⭐',
   'gemini-2.0-flash':                'Gemini 2.0 Flash — FREE (best for RP)',
   'gemini-2.5-flash':                'Gemini 2.5 Flash — FREE (newest, lower limit)',
+  'deepseek-flash':                  'DeepSeek Flash — latest',
   'deepseek-chat':                   'deepseek-chat (V3, cheap)',
   'deepseek-reasoner':               'deepseek-reasoner (R1)',
   'google/gemini-2.0-flash-exp:free':'Gemini 2.0 Flash — FREE (best for RP) ⭐',
@@ -409,7 +414,7 @@ function populateSettingsForm() {
   const modelSelect = document.getElementById('model-select');
   const customGroup = document.getElementById('custom-model-group');
   const customInput = document.getElementById('custom-model');
-  const storedModel = settings.model || 'deepseek-chat';
+  const storedModel = settings.model || getDefaultModel(provider);
   const knownModels = Array.from(modelSelect.options).map(o => o.value).filter(v => v !== 'custom');
 
   if (knownModels.includes(storedModel)) {
@@ -1407,9 +1412,9 @@ async function streamAIResponse() {
 
   try {
     const messages = buildAPIMessages();
-    const model    = settings.model || 'google/gemini-2.0-flash-001';
-    const temp     = settings.temperature ?? 0.6;
     const provider = settings.provider || 'deepseek';
+    const model    = settings.model || getDefaultModel(provider);
+    const temp     = settings.temperature ?? 0.6;
     // Cap reply length on Groq's tight free tier so output tokens don't blow
     // the per-minute budget; still long enough for 4-6 paragraphs.
     const maxTokens = provider === 'groq' ? 500 : undefined;
@@ -1526,7 +1531,7 @@ async function streamAIResponse() {
   } catch (err) {
     console.error('AI response failed', {
       provider: settings.provider || 'deepseek',
-      model: settings.model || 'google/gemini-2.0-flash-001',
+      model: settings.model || getDefaultModel(settings.provider || 'deepseek'),
       status: err.status || null,
       detail: safeProviderErrorMessage(err.providerMessage || err.message, settings.apiKey),
     });
@@ -2499,7 +2504,7 @@ Return ONLY the JSON object, no markdown, no explanation.`;
         'X-Title':       'Roleplay Chat',
       },
       body: JSON.stringify({
-        model:       settings.model || 'google/gemini-2.0-flash-001',
+        model:       settings.model || getDefaultModel(settings.provider || 'deepseek'),
         temperature: 0.7,
         stream:      false,
         messages:    [{ role: 'user', content: prompt }],
@@ -2572,7 +2577,7 @@ async function applyImportReview() {
 // ROSIE — RP HELPER
 // ─────────────────────────────────────────────
 // Uses whatever model the user has selected — avoids billing issues with locked providers
-const getRosieModel = () => settings.model || 'deepseek/deepseek-chat-v3-0324';
+const getRosieModel = () => settings.model || getDefaultModel(settings.provider || 'deepseek');
 
 const ROSIE_SYSTEM = `you're rosie. you live in aly's roleplay app and you're basically her hype girl for all things RP.
 
