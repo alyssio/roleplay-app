@@ -357,6 +357,20 @@ function getEndpoint() {
   return PROVIDERS[provider]?.endpoint || PROVIDERS.deepseek.endpoint;
 }
 
+let warmedAPIOrigin = null;
+function warmupAPIConnection() {
+  const origin = new URL(getEndpoint()).origin;
+  if (origin === warmedAPIOrigin) return;
+  document.querySelector('link[data-api-preconnect]')?.remove();
+  const link = document.createElement('link');
+  link.rel = 'preconnect';
+  link.href = origin;
+  link.crossOrigin = 'anonymous';
+  link.dataset.apiPreconnect = 'true';
+  document.head.appendChild(link);
+  warmedAPIOrigin = origin;
+}
+
 function updateProviderUI(provider) {
   const cfg         = PROVIDERS[provider] || PROVIDERS.deepseek;
   const modelSelect = document.getElementById('model-select');
@@ -448,6 +462,7 @@ async function saveSettings({ silent = false, close = false } = {}) {
     chatBg: settings.chatBg || null,
   };
 
+  if (settings.apiKey) warmupAPIConnection();
   await dbPut('settings', settings);
 
   if (close) closeSettings();
@@ -468,12 +483,23 @@ function scheduleAutoSave() {
 // ─────────────────────────────────────────────
 async function loadCharacters() {
   characters = await dbGetAll('characters');
-  const chats = await dbGetAll('chats');
-  const botCounts = {};
-  chats.forEach(c => {
-    botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
-  });
-  renderCharacterGrid(characters, botCounts);
+  renderCharacterGrid(characters);
+  if (!characters.length) return;
+
+  const loadCounts = () => {
+    dbGetAll('chats').then(chats => {
+      const botCounts = {};
+      chats.forEach(c => {
+        botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
+      });
+      document.querySelectorAll('.char-row-count[data-char-id]').forEach(countEl => {
+        const count = botCounts[countEl.dataset.charId] || 0;
+        countEl.textContent = count === 0 ? 'No messages yet' : `${count} message${count === 1 ? '' : 's'}`;
+      });
+    }).catch(err => console.error('Unable to load chat counts.', err));
+  };
+  if (window.requestIdleCallback) window.requestIdleCallback(loadCounts, { timeout: 1500 });
+  else setTimeout(loadCounts, 250);
 }
 
 // ── Swipe-to-delete for char rows ─────────────────────────────────────────────
@@ -563,8 +589,11 @@ function renderCharacterGrid(list, botCounts = {}) {
 
     const countEl = document.createElement('div');
     countEl.className = 'char-row-count';
+    countEl.dataset.charId = char.id;
     const cnt = botCounts[char.id] || 0;
-    countEl.textContent = cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`;
+    countEl.textContent = Object.prototype.hasOwnProperty.call(botCounts, char.id)
+      ? (cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`)
+      : 'Loading…';
 
     infoEl.appendChild(nameEl);
     infoEl.appendChild(countEl);
@@ -1287,6 +1316,20 @@ async function streamAIResponse() {
   container.appendChild(typingRow);
   scrollToBottom();
 
+  let previewTimer = null;
+  let latestPreview = '';
+  const queuePreview = text => {
+    latestPreview = text;
+    if (previewTimer) return;
+    previewTimer = setTimeout(() => {
+      previewTimer = null;
+      const followOutput = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      typingBubble.classList.remove('typing-bubble');
+      typingBubble.textContent = latestPreview;
+      if (followOutput) scrollToBottom(false);
+    }, 50);
+  };
+
   try {
     const messages = buildAPIMessages();
     const model    = settings.model || 'google/gemini-2.0-flash-001';
@@ -1296,7 +1339,7 @@ async function streamAIResponse() {
     // the per-minute budget; still long enough for 4-6 paragraphs.
     const maxTokens = provider === 'groq' ? 500 : undefined;
 
-    const fetchOnce = async () => {
+    const fetchOnce = async (onText) => {
       // One request per send. Do NOT auto-retry 429 — that just burns more
       // of the free-tier quota and keeps the rate-limit window saturated.
       const body = { model, temperature: temp, stream: true, messages };
@@ -1331,7 +1374,10 @@ async function streamAIResponse() {
         if (data === '[DONE]') { streamDone = true; return; }
         try {
           const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-          if (delta) accumulated += delta;
+          if (delta) {
+            accumulated += delta;
+            onText(accumulated);
+          }
         } catch { /* incomplete/non-JSON line — skip */ }
       };
 
@@ -1343,6 +1389,7 @@ async function streamAIResponse() {
         buffer = lines.pop();    // keep the last, possibly-incomplete line
         for (const line of lines) { handleLine(line); if (streamDone) break; }
       }
+      buffer += decoder.decode();
       if (buffer) handleLine(buffer); // flush any trailing complete line
       return accumulated || '…';
     };
@@ -1353,11 +1400,14 @@ async function streamAIResponse() {
     let accumulated = '';
     let slipped = false;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      accumulated = await fetchOnce();
+      accumulated = await fetchOnce(queuePreview);
       slipped = detectsUserRoleplay(accumulated);
       if (!slipped) break;
       if (attempt < MAX_RETRIES) {
+        clearTimeout(previewTimer);
+        previewTimer = null;
         typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
+        typingBubble.classList.add('typing-bubble');
       }
     }
     if (slipped) accumulated = scrubUserRoleplay(accumulated);
@@ -1365,6 +1415,7 @@ async function streamAIResponse() {
     accumulated = deTagQuestion(accumulated);
 
     // Remove typing indicator and pop in full response
+    clearTimeout(previewTimer);
     typingRow.remove();
     const placeholderMsg = { role: 'assistant', content: accumulated, timestamp: Date.now() };
     currentChat.messages.push(placeholderMsg);
@@ -1375,6 +1426,7 @@ async function streamAIResponse() {
 
   } catch (err) {
     console.error(err);
+    clearTimeout(previewTimer);
     typingRow.remove();
     toast(friendlyError(err), 'error', 6000);
   }
@@ -1858,8 +1910,9 @@ function backupReminder() {
 
 async function init() {
   db       = await openDB();
-  await requestPersistentStorage();
+  void requestPersistentStorage();
   settings = (await dbGet('settings', 'app')) || { id: 'app' };
+  if (settings.apiKey) warmupAPIConnection();
 
   // One-time: lower temperature to 0.6 for tighter, less rambly output.
   // Only touches the old 0.8 default; leaves any custom value alone.
