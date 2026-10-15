@@ -253,6 +253,8 @@ function toast(msg, type = '', duration = 3000) {
 function friendlyError(err) {
   const raw = (err && err.message ? err.message : String(err)) || '';
   const m = raw.toLowerCase();
+  if (err?.name === 'AbortError' || m.includes('abort'))
+    return 'The connection to the AI provider was interrupted before a reply arrived. Try again; if it repeats, note whether it happens immediately or after about 60 seconds.';
   if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed') || m.includes('cors'))
     return 'Network error — check your internet connection and try again.';
   if (m.includes('401') || m.includes('unauthorized') || m.includes('invalid key') || m.includes('api key not valid'))
