@@ -1315,6 +1315,51 @@ function parseChatStreamLine(line, apiKey) {
   return { content: event.choices?.[0]?.delta?.content };
 }
 
+const FIRST_CHAT_CONTENT_TIMEOUT_MS = 60000;
+const CHAT_STREAM_IDLE_TIMEOUT_MS = 45000;
+
+function createChatStreamDeadline(controller) {
+  let timeoutError = null;
+  let firstContentTimer = null;
+  let idleTimer = null;
+  const aborted = new Promise((_, reject) => {
+    controller.signal.addEventListener('abort', () => {
+      reject(timeoutError || new Error('The AI request was aborted.'));
+    }, { once: true });
+  });
+  const abortWithError = message => {
+    if (controller.signal.aborted) return;
+    timeoutError = new Error(message);
+    controller.abort();
+  };
+
+  firstContentTimer = setTimeout(() => {
+    abortWithError('No reply text arrived from the AI provider within 60 seconds. The stream may be stuck; check the provider status or try again.');
+  }, FIRST_CHAT_CONTENT_TIMEOUT_MS);
+
+  return {
+    aborted,
+    receivedFirstContent() {
+      clearTimeout(firstContentTimer);
+      firstContentTimer = null;
+    },
+    startIdleTimeout() {
+      this.clearIdleTimeout();
+      idleTimer = setTimeout(() => {
+        abortWithError('The AI response stream stopped sending data for 45 seconds. Try again or check the provider status.');
+      }, CHAT_STREAM_IDLE_TIMEOUT_MS);
+    },
+    clearIdleTimeout() {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    },
+    cleanup() {
+      clearTimeout(firstContentTimer);
+      this.clearIdleTimeout();
+    },
+  };
+}
+
 // ─────────────────────────────────────────────
 // CHAT — STREAM AI RESPONSE
 // ─────────────────────────────────────────────
@@ -1374,55 +1419,78 @@ async function streamAIResponse() {
       // of the free-tier quota and keeps the rate-limit window saturated.
       const body = { model, temperature: temp, stream: true, messages };
       if (maxTokens) body.max_tokens = maxTokens;
-      const response = await fetch(getEndpoint(), {
-        method: 'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${settings.apiKey}`,
-          'HTTP-Referer':  window.location.href,
-          'X-Title':       'Roleplay Chat',
-        },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        const providerMessage = safeProviderErrorMessage(err?.error?.message || err?.message, settings.apiKey);
-        const msg = response.status === 429
-          ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
-          : `HTTP ${response.status}${providerMessage ? ` — ${providerMessage}` : ''}`;
-        const error = new Error(msg);
-        error.status = response.status;
-        error.providerMessage = providerMessage;
-        throw error;
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let buffer = '';           // holds an incomplete line across chunk reads
+      const controller = new AbortController();
+      let reader = null;
+      let receivedContent = false;
       let streamDone = false;
-
-      const handleLine = (line) => {
-        const event = parseChatStreamLine(line, settings.apiKey);
-        if (!event) return;
-        if (event.done) { streamDone = true; return; }
-        if (event.content) {
-          accumulated += event.content;
-          onText(accumulated);
+      const deadline = createChatStreamDeadline(controller);
+      try {
+        const response = await Promise.race([fetch(getEndpoint(), {
+          method: 'POST',
+          headers: {
+            'Content-Type':  'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`,
+            'HTTP-Referer':  window.location.href,
+            'X-Title':       'Roleplay Chat',
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }), deadline.aborted]);
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          const providerMessage = safeProviderErrorMessage(err?.error?.message || err?.message, settings.apiKey);
+          const msg = response.status === 429
+            ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
+            : `HTTP ${response.status}${providerMessage ? ` — ${providerMessage}` : ''}`;
+          const error = new Error(msg);
+          error.status = response.status;
+          error.providerMessage = providerMessage;
+          throw error;
         }
-      };
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+        let buffer = '';           // holds an incomplete line across chunk reads
 
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();    // keep the last, possibly-incomplete line
-        for (const line of lines) { handleLine(line); if (streamDone) break; }
+        const handleLine = (line) => {
+          const event = parseChatStreamLine(line, settings.apiKey);
+          if (!event) return;
+          if (event.done) { streamDone = true; return; }
+          if (event.content) {
+            accumulated += event.content;
+            if (!receivedContent) {
+              receivedContent = true;
+              deadline.receivedFirstContent();
+            }
+            onText(accumulated);
+          }
+        };
+
+        while (!streamDone) {
+          try {
+            const read = reader.read();
+            if (receivedContent) deadline.startIdleTimeout();
+            const result = await Promise.race([read, deadline.aborted]);
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();    // keep the last, possibly-incomplete line
+            for (const line of lines) { handleLine(line); if (streamDone) break; }
+          } finally {
+            deadline.clearIdleTimeout();
+          }
+        }
+        buffer += decoder.decode();
+        if (buffer) handleLine(buffer); // flush any trailing complete line
+        if (!accumulated) throw new Error('The AI provider ended the response without any reply text.');
+        return accumulated;
+      } finally {
+        deadline.cleanup();
+        if (reader) {
+          if (!streamDone) await reader.cancel().catch(() => {});
+          try { reader.releaseLock(); } catch {}
+        }
       }
-      buffer += decoder.decode();
-      if (buffer) handleLine(buffer); // flush any trailing complete line
-      if (!accumulated) throw new Error('The AI provider ended the response without any reply text.');
-      return accumulated;
     };
 
     // Retry loop if AI roleplays as the user. Kept low to avoid burning
