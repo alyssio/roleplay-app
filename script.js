@@ -1285,6 +1285,81 @@ async function sendMessage() {
   await streamAIResponse();
 }
 
+function safeProviderErrorMessage(value, apiKey = '') {
+  if (typeof value !== 'string') return '';
+  const secret = typeof apiKey === 'string' ? apiKey.trim() : '';
+  const message = secret ? value.split(secret).join('[redacted]') : value;
+  return message.trim().slice(0, 300);
+}
+
+function parseChatStreamLine(line, apiKey) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) return null;
+  const data = trimmed.slice(5).trim();
+  if (data === '[DONE]') return { done: true };
+
+  let event;
+  try {
+    event = JSON.parse(data);
+  } catch {
+    return null;
+  }
+
+  if (event.error) {
+    const message = safeProviderErrorMessage(
+      typeof event.error === 'string' ? event.error : event.error.message,
+      apiKey
+    );
+    throw new Error(message || 'The AI provider returned an error in its response stream.');
+  }
+  return { content: event.choices?.[0]?.delta?.content };
+}
+
+const FIRST_CHAT_CONTENT_TIMEOUT_MS = 60000;
+const CHAT_STREAM_IDLE_TIMEOUT_MS = 45000;
+
+function createChatStreamDeadline(controller) {
+  let timeoutError = null;
+  let firstContentTimer = null;
+  let idleTimer = null;
+  const aborted = new Promise((_, reject) => {
+    controller.signal.addEventListener('abort', () => {
+      reject(timeoutError || new Error('The AI request was aborted.'));
+    }, { once: true });
+  });
+  const abortWithError = message => {
+    if (controller.signal.aborted) return;
+    timeoutError = new Error(message);
+    controller.abort();
+  };
+
+  firstContentTimer = setTimeout(() => {
+    abortWithError('No reply text arrived from the AI provider within 60 seconds. The stream may be stuck; check the provider status or try again.');
+  }, FIRST_CHAT_CONTENT_TIMEOUT_MS);
+
+  return {
+    aborted,
+    receivedFirstContent() {
+      clearTimeout(firstContentTimer);
+      firstContentTimer = null;
+    },
+    startIdleTimeout() {
+      this.clearIdleTimeout();
+      idleTimer = setTimeout(() => {
+        abortWithError('The AI response stream stopped sending data for 45 seconds. Try again or check the provider status.');
+      }, CHAT_STREAM_IDLE_TIMEOUT_MS);
+    },
+    clearIdleTimeout() {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    },
+    cleanup() {
+      clearTimeout(firstContentTimer);
+      this.clearIdleTimeout();
+    },
+  };
+}
+
 // ─────────────────────────────────────────────
 // CHAT — STREAM AI RESPONSE
 // ─────────────────────────────────────────────
@@ -1344,54 +1419,78 @@ async function streamAIResponse() {
       // of the free-tier quota and keeps the rate-limit window saturated.
       const body = { model, temperature: temp, stream: true, messages };
       if (maxTokens) body.max_tokens = maxTokens;
-      const response = await fetch(getEndpoint(), {
-        method: 'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${settings.apiKey}`,
-          'HTTP-Referer':  window.location.href,
-          'X-Title':       'Roleplay Chat',
-        },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        const msg = response.status === 429
-          ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
-          : (err?.error?.message || `HTTP ${response.status}`);
-        throw new Error(msg);
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let buffer = '';           // holds an incomplete line across chunk reads
+      const controller = new AbortController();
+      let reader = null;
+      let receivedContent = false;
       let streamDone = false;
+      const deadline = createChatStreamDeadline(controller);
+      try {
+        const response = await Promise.race([fetch(getEndpoint(), {
+          method: 'POST',
+          headers: {
+            'Content-Type':  'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`,
+            'HTTP-Referer':  window.location.href,
+            'X-Title':       'Roleplay Chat',
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }), deadline.aborted]);
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          const providerMessage = safeProviderErrorMessage(err?.error?.message || err?.message, settings.apiKey);
+          const msg = response.status === 429
+            ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
+            : `HTTP ${response.status}${providerMessage ? ` — ${providerMessage}` : ''}`;
+          const error = new Error(msg);
+          error.status = response.status;
+          error.providerMessage = providerMessage;
+          throw error;
+        }
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+        let buffer = '';           // holds an incomplete line across chunk reads
 
-      const handleLine = (line) => {
-        const t = line.trim();
-        if (!t.startsWith('data:')) return;
-        const data = t.slice(5).trim();
-        if (data === '[DONE]') { streamDone = true; return; }
-        try {
-          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-          if (delta) {
-            accumulated += delta;
+        const handleLine = (line) => {
+          const event = parseChatStreamLine(line, settings.apiKey);
+          if (!event) return;
+          if (event.done) { streamDone = true; return; }
+          if (event.content) {
+            accumulated += event.content;
+            if (!receivedContent) {
+              receivedContent = true;
+              deadline.receivedFirstContent();
+            }
             onText(accumulated);
           }
-        } catch { /* incomplete/non-JSON line — skip */ }
-      };
+        };
 
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();    // keep the last, possibly-incomplete line
-        for (const line of lines) { handleLine(line); if (streamDone) break; }
+        while (!streamDone) {
+          try {
+            const read = reader.read();
+            if (receivedContent) deadline.startIdleTimeout();
+            const result = await Promise.race([read, deadline.aborted]);
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();    // keep the last, possibly-incomplete line
+            for (const line of lines) { handleLine(line); if (streamDone) break; }
+          } finally {
+            deadline.clearIdleTimeout();
+          }
+        }
+        buffer += decoder.decode();
+        if (buffer) handleLine(buffer); // flush any trailing complete line
+        if (!accumulated) throw new Error('The AI provider ended the response without any reply text.');
+        return accumulated;
+      } finally {
+        deadline.cleanup();
+        if (reader) {
+          if (!streamDone) await reader.cancel().catch(() => {});
+          try { reader.releaseLock(); } catch {}
+        }
       }
-      buffer += decoder.decode();
-      if (buffer) handleLine(buffer); // flush any trailing complete line
-      return accumulated || '…';
     };
 
     // Retry loop if AI roleplays as the user. Kept low to avoid burning
@@ -1425,7 +1524,12 @@ async function streamAIResponse() {
     scrollToBottom();
 
   } catch (err) {
-    console.error(err);
+    console.error('AI response failed', {
+      provider: settings.provider || 'deepseek',
+      model: settings.model || 'google/gemini-2.0-flash-001',
+      status: err.status || null,
+      detail: safeProviderErrorMessage(err.providerMessage || err.message, settings.apiKey),
+    });
     clearTimeout(previewTimer);
     typingRow.remove();
     toast(friendlyError(err), 'error', 6000);
@@ -1851,31 +1955,40 @@ async function checkStorageHealth() {
 // Rolling text-only snapshot in localStorage as a last-ditch recovery if the
 // IndexedDB is cleared. Avatars/images are stripped to stay within limits.
 let _snapshotTimer = null;
+let _snapshotIdleId = null;
 function scheduleLocalSnapshot() {
   clearTimeout(_snapshotTimer);
-  _snapshotTimer = setTimeout(saveLocalSnapshot, 3000);
+  if (_snapshotIdleId !== null) {
+    window.cancelIdleCallback?.(_snapshotIdleId);
+    _snapshotIdleId = null;
+  }
+  _snapshotTimer = setTimeout(() => {
+    _snapshotTimer = null;
+    if (window.requestIdleCallback) {
+      _snapshotIdleId = window.requestIdleCallback(() => {
+        _snapshotIdleId = null;
+        void saveLocalSnapshot();
+      }, { timeout: 30000 });
+    } else {
+      _snapshotTimer = setTimeout(() => {
+        _snapshotTimer = null;
+        void saveLocalSnapshot();
+      }, 10000);
+    }
+  }, 3000);
 }
 async function saveLocalSnapshot() {
   try {
     if (!db) return;
     const chars = (await dbGetAll('characters')).map(c => ({ ...c, avatar: null }));
-    let chats = await dbGetAll('chats');
-
-    const build = (perChatCap) => JSON.stringify({
+    const chats = await dbGetAll('chats');
+    const snapshot = JSON.stringify({
       characters: chars,
-      chats: perChatCap
-        ? chats.map(c => ({ ...c, messages: (c.messages || []).slice(-perChatCap) }))
-        : chats,
+      chats: chats.map(c => ({ ...c, messages: (c.messages || []).slice(-30) })),
       savedAt: Date.now(),
-      ...(perChatCap ? { trimmed: true } : {}),
+      trimmed: true,
     });
-
-    // Try full, then progressively trim oldest messages so the snapshot
-    // always fits in localStorage rather than silently failing on huge chats.
-    for (const cap of [null, 400, 200, 80, 30]) {
-      try { localStorage.setItem('rp-snapshot', build(cap)); return; }
-      catch { /* quota exceeded — try a smaller cap */ }
-    }
+    localStorage.setItem('rp-snapshot', snapshot);
   } catch { /* serialization issue — skip */ }
 }
 
