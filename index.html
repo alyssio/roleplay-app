@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=39" />
+  <link rel="stylesheet" href="style.css?v=40" />
 </head>
 <body>
 
@@ -65,23 +65,24 @@
 
     <div class="home-toolbar">
       <div class="search-wrap">
-        <input type="text" id="search-input" placeholder="Search characters…" autocomplete="off" />
+        <input type="text" id="search-input" aria-label="Search characters" placeholder="Search characters…" autocomplete="off" />
       </div>
-      <button class="btn-secondary" id="btn-browse-chars">
+      <button class="icon-btn" id="btn-open-chars" title="My Characters" aria-controls="char-sheet" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M2 21c0-4 3.1-7 7-7s7 3 7 7"/>
+          <path d="M19 8v6M22 11h-6"/>
+        </svg>
+        <span>My Characters</span>
+      </button>
+      <button class="btn-secondary" id="btn-browse-chars" aria-label="Browse characters">
         <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
           <path d="M10 3 L11.2 8.8 L17 10 L11.2 11.2 L10 17 L8.8 11.2 L3 10 L8.8 8.8 Z"/>
           <path d="M18 14 L18.8 17.2 L22 18 L18.8 18.8 L18 22 L17.2 18.8 L14 18 L17.2 17.2 Z" opacity="0.7"/>
         </svg>
         <span class="btn-label">Browse</span>
       </button>
-      <button class="icon-btn btn-open-chars" id="btn-open-chars" title="My Characters">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M2 21c0-4 3.1-7 7-7s7 3 7 7"/>
-          <path d="M19 8v6M22 11h-6"/>
-        </svg>
-      </button>
-      <button class="btn-primary" id="btn-new-character">
+      <button class="btn-primary" id="btn-new-character" aria-label="New character">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M12 5v14M5 12h14"/>
         </svg>
@@ -122,7 +123,7 @@
     <div id="char-sheet">
       <div id="char-sheet-header">
         <h2>My Characters</h2>
-        <button class="icon-btn" id="btn-close-chars">
+        <button class="icon-btn" id="btn-close-chars" aria-label="Close my characters">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M18 6 6 18M6 6l12 12"/>
           </svg>
@@ -133,10 +134,10 @@
   </div>
 
   <!-- ===== CHAT SCREEN ===== -->
-  <div id="chat-screen" class="screen">
+  <div id="chat-screen" class="screen" inert>
     <div id="chat-bg-layer"></div>
     <header class="chat-header">
-      <button class="icon-btn" id="btn-back" title="Back">
+      <button class="icon-btn" id="btn-back" title="Back to characters">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M19 12H5M12 5l-7 7 7 7"/>
         </svg>
@@ -146,6 +147,12 @@
         <span class="chat-header-name" id="chat-header-name"></span>
       </div>
       <div class="chat-header-actions">
+        <button class="icon-btn" id="btn-chat-settings" title="Settings" aria-controls="settings-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
         <button class="icon-btn" id="btn-music" title="Music player" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 18V5l12-2v13"/>
@@ -187,9 +194,11 @@
       <div class="frame-star frame-star--2">&#10022;</div>
       <div class="frame-star frame-star--3">&#10022;</div>
 
+      <p id="chat-status" role="status" hidden></p>
       <div class="input-area">
         <textarea
           id="message-input"
+          aria-label="Message"
           placeholder="Type a message…"
           rows="1"
           autocomplete="off"
@@ -206,10 +215,10 @@
 
   <!-- ===== SETTINGS PANEL ===== -->
   <div class="overlay" id="settings-overlay"></div>
-  <aside class="settings-panel" id="settings-panel">
+  <aside class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="panel-header">
-      <h2>Settings</h2>
-      <button class="icon-btn" id="btn-close-settings">
+      <h2 id="settings-title">Settings</h2>
+      <button class="icon-btn" id="btn-close-settings" aria-label="Close settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M18 6 6 18M6 6l12 12"/>
         </svg>
@@ -649,18 +658,10 @@
     </div>
   </div>
 
-  <script src="script.js?v=100"></script>
+  <script src="script.js?v=101"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      let refreshing = false;
-      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
-        .then(reg => reg.update())
-        .catch(() => {});
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        refreshing = true;
-        window.location.reload();
-      });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
     }
   </script>
 </body>
