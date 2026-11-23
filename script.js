@@ -84,26 +84,77 @@ function dbGetAll(store) {
   });
 }
 
-function dbPut(store, value) {
+function dbWrite(stores, write) {
   return new Promise((resolve, reject) => {
-    const tx  = db.transaction(store, 'readwrite');
-    const req = tx.objectStore(store).put(value);
-    req.onsuccess = () => {
-      // Keep the local recovery snapshot fresh after any content change
-      if (store === 'characters' || store === 'chats') scheduleLocalSnapshot();
-      resolve(req.result);
+    const tx = db.transaction(stores, 'readwrite');
+    let failure;
+    const abort = error => {
+      failure = error;
+      tx.abort();
     };
-    req.onerror   = () => reject(req.error);
+
+    tx.oncomplete = () => {
+      if (tx.objectStoreNames.contains('characters') || tx.objectStoreNames.contains('chats')) {
+        scheduleLocalSnapshot();
+      }
+      resolve();
+    };
+    tx.onabort = () => reject(failure || tx.error || new Error('The database write was canceled.'));
+    try {
+      write(tx, abort);
+    } catch (error) {
+      abort(error);
+    }
   });
 }
 
-function dbDelete(store, key) {
-  return new Promise((resolve, reject) => {
-    const tx  = db.transaction(store, 'readwrite');
-    const req = tx.objectStore(store).delete(key);
-    req.onsuccess = () => resolve();
-    req.onerror   = () => reject(req.error);
+function dbPut(store, value) {
+  return dbWrite(store, tx => tx.objectStore(store).put(value));
+}
+
+async function createChatIfMissing(character) {
+  let chat;
+  await dbWrite(['characters', 'chats'], (tx, abort) => {
+    const store = tx.objectStore('chats');
+    const existing = store.get(character.id);
+    existing.onsuccess = () => {
+      chat = existing.result;
+      if (chat) return;
+      const saved = tx.objectStore('characters').get(character.id);
+      saved.onsuccess = () => {
+        if (!saved.result) {
+          abort(new Error('This character is no longer available.'));
+          return;
+        }
+        const opening = saved.result.openingMessage;
+        chat = {
+          id: character.id,
+          messages: opening ? [{ role: 'assistant', content: opening, timestamp: Date.now() }] : [],
+        };
+        store.add(chat);
+      };
+    };
   });
+  return chat;
+}
+
+async function persistChatMessages(chat, messages) {
+  await dbWrite('chats', (tx, abort) => {
+    const store = tx.objectStore('chats');
+    const request = store.get(chat.id);
+    request.onsuccess = () => {
+      const saved = request.result;
+      if (!saved || JSON.stringify(saved.messages) !== JSON.stringify(chat.messages)) {
+        abort(new Error('This chat changed in another tab. Reopen it before trying again.'));
+        return;
+      }
+      store.put({ ...saved, messages });
+    };
+  });
+
+  chat.messages = messages;
+  chatCounts?.set(chat.id, messages.filter(msg => msg.role === 'assistant').length);
+  updateCharacterCounts();
 }
 
 // ─────────────────────────────────────────────
@@ -113,9 +164,15 @@ let characters   = [];   // all characters from DB
 let settings     = {};   // API key, model, temperature, persona
 let currentChar  = null; // character object currently in chat
 let currentChat  = null; // { id, messages: [] }
-let isStreaming  = false;
+let busyChat = null;
+let deletingCharacterId = null;
+let streamingRow = null;
+let chatNavigation = 0;
+const chatDrafts = new Map();
 let editMsgIndex = null; // index of message being edited
 let profileCharId   = null;  // char shown in profile modal
+let profileUsePersona = true;
+let profileTrigger = null;
 let chatUsePersona  = true;  // whether to inject user persona into system prompt
 
 // ─────────────────────────────────────────────
@@ -143,19 +200,17 @@ function initials(name) {
 }
 
 // Replace {{char}} / {{user}} placeholders with actual names
-function fillPlaceholders(text) {
+function fillPlaceholders(text, character = currentChar, userName = settings.persona?.name || 'User') {
   if (!text) return text;
-  const charName = currentChar?.name || 'Character';
-  const userName = settings.persona?.name || 'User';
-  return text
-    .replace(/\{\{char\}\}/gi, charName)
-    .replace(/\{\{user\}\}/gi, userName);
+  const charName = character?.name || 'Character';
+  return text.replace(/\{\{(char|user)\}\}/gi, (_, role) => role.toLowerCase() === 'char' ? charName : userName);
 }
 
 // Render message text into an element, embedding any image URLs as <img> tags
 function renderMessageContent(text, el) {
   el.innerHTML = '';
-  const filled = fillPlaceholders(text) || '';
+  const userName = chatUsePersona ? settings.persona?.name || 'User' : 'User';
+  const filled = fillPlaceholders(text, currentChar, userName) || '';
   // Match markdown images ![alt](url) OR bare image URLs
   const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:[?#]\S*)?/gi;
   let last = 0, match;
@@ -262,7 +317,7 @@ function friendlyError(err) {
   if (m.includes('403') || m.includes('forbidden') || m.includes('location') || m.includes('permission'))
     return 'Blocked by the provider (key restriction or region). Check your provider/account settings.';
   if (m.includes('429') || m.includes('rate') || m.includes('quota') || m.includes('too many'))
-    return 'Rate limited — wait ~30–60s, then try again. Free tiers cap how fast you can send.';
+    return 'Rate limited. Wait a moment and try again.';
   if (m.includes('no endpoints') || m.includes('404') || m.includes('not found') || m.includes('does not exist'))
     return "That model isn't available on your key — pick a different model in Settings.";
   if (m.includes('too large') || m.includes('context length') || m.includes('maximum context') || m.includes('413'))
@@ -282,13 +337,21 @@ function confirm(message) {
     const ok       = document.getElementById('btn-confirm-ok');
     const cancel   = document.getElementById('btn-confirm-cancel');
 
+    if (backdrop.classList.contains('open')) {
+      resolve(false);
+      return;
+    }
+
+    const trigger = document.activeElement;
     msg.textContent = message;
     backdrop.classList.add('open');
+    cancel.focus({ preventScroll: true });
 
     function cleanup(result) {
       backdrop.classList.remove('open');
       ok.removeEventListener('click', onOk);
       cancel.removeEventListener('click', onCancel);
+      trigger?.focus({ preventScroll: true });
       resolve(result);
     }
 
@@ -304,22 +367,41 @@ function confirm(message) {
 // SCREEN NAVIGATION
 // ─────────────────────────────────────────────
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.screen').forEach(screen => {
+    const active = screen.id === id;
+    screen.classList.toggle('active', active);
+    screen.inert = !active;
+  });
 }
 
 // ─────────────────────────────────────────────
 // SETTINGS PANEL
 // ─────────────────────────────────────────────
+let settingsTrigger = null;
+let formProvider = 'deepseek';
+let formApiKeys = {};
+let formAvatar = null;
+
 function openSettings() {
-  document.getElementById('settings-panel').classList.add('open');
-  document.getElementById('settings-overlay').classList.add('visible');
+  const panel = document.getElementById('settings-panel');
+  if (panel.classList.contains('open')) return;
+  settingsTrigger = document.activeElement;
   populateSettingsForm();
+  panel.classList.add('open');
+  document.getElementById('settings-overlay').classList.add('visible');
+  document.querySelector('.screen.active').inert = true;
+  document.getElementById('btn-close-settings').focus({ preventScroll: true });
 }
 
 function closeSettings() {
-  document.getElementById('settings-panel').classList.remove('open');
+  const panel = document.getElementById('settings-panel');
+  if (!panel.classList.contains('open')) return;
+  if (autoSaveTimer !== null) void saveSettings({ silent: true });
+  panel.classList.remove('open');
   document.getElementById('settings-overlay').classList.remove('visible');
+  document.querySelector('.screen.active').inert = false;
+  settingsTrigger?.focus({ preventScroll: true });
+  settingsTrigger = null;
 }
 
 // Provider configs
@@ -359,8 +441,7 @@ const MODEL_LABELS = {
   'deepseek/deepseek-r1':            'DeepSeek R1',
 };
 
-function getEndpoint() {
-  const provider = settings.provider || 'deepseek';
+function getEndpoint(provider = settings.provider || 'deepseek') {
   return PROVIDERS[provider]?.endpoint || PROVIDERS.deepseek.endpoint;
 }
 
@@ -402,6 +483,9 @@ function updateProviderUI(provider) {
 
 function populateSettingsForm() {
   const provider = settings.provider || 'deepseek';
+  formProvider = provider;
+  formApiKeys = { ...settings.apiKeys };
+  formAvatar = settings.persona?.avatar || null;
   document.getElementById('provider-select').value     = provider;
   document.getElementById('api-key').value             = settings.apiKey      || '';
   document.getElementById('vision-key').value          = settings.visionKey   || '';
@@ -439,6 +523,8 @@ function populateSettingsForm() {
 }
 
 async function saveSettings({ silent = false, close = false } = {}) {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = null;
   const modelSelect = document.getElementById('model-select');
   const model = modelSelect.value === 'custom'
     ? document.getElementById('custom-model').value.trim()
@@ -449,14 +535,15 @@ async function saveSettings({ silent = false, close = false } = {}) {
   const curProvider = document.getElementById('provider-select').value;
   const curKey      = document.getElementById('api-key').value.trim();
   // Remember a key per provider so switching providers never loses one
-  const apiKeys = { ...(settings.apiKeys || {}) };
-  apiKeys[curProvider] = curKey;
+  formApiKeys[curProvider] = curKey;
 
+  const previousPersona = settings.persona;
   settings = {
+    ...settings,
     id:          'app',
     provider:    curProvider,
     apiKey:      curKey,
-    apiKeys,
+    apiKeys:     { ...formApiKeys },
     visionKey:   document.getElementById('vision-key').value.trim(),
     model,
     temperature: parseFloat(document.getElementById('temperature').value),
@@ -464,18 +551,25 @@ async function saveSettings({ silent = false, close = false } = {}) {
     persona: {
       name:        document.getElementById('persona-name').value.trim(),
       description: document.getElementById('persona-desc').value.trim(),
-      avatar:      settings.persona?.avatar || null,
+      avatar:      formAvatar,
     },
     chatBg: settings.chatBg || null,
   };
 
   if (settings.apiKey) warmupAPIConnection();
-  await dbPut('settings', settings);
+  if (currentChat && (previousPersona?.name !== settings.persona.name ||
+      previousPersona?.avatar !== settings.persona.avatar)) {
+    updateMessagePersona();
+  }
 
-  if (close) closeSettings();
-  if (!silent) toast('Settings saved.', 'success');
-
-  if (currentChar) renderMessages();
+  const snapshot = settings;
+  try {
+    await dbPut('settings', snapshot);
+    if (close && settings === snapshot && autoSaveTimer === null) closeSettings();
+    if (!silent) toast('Settings saved.', 'success');
+  } catch (err) {
+    toast('Could not save settings to storage. Please try saving again.', 'error');
+  }
 }
 
 // Debounced auto-save — fires 800ms after the user stops typing
@@ -488,25 +582,41 @@ function scheduleAutoSave() {
 // ─────────────────────────────────────────────
 // HOME SCREEN — CHARACTER LIST
 // ─────────────────────────────────────────────
+let chatCounts = null;
+
 async function loadCharacters() {
   characters = await dbGetAll('characters');
-  renderCharacterGrid(characters);
-  if (!characters.length) return;
+  renderCharacterGrid();
+  if (!characters.length) {
+    chatCounts = new Map();
+    return;
+  }
 
-  const loadCounts = () => {
-    dbGetAll('chats').then(chats => {
-      const botCounts = {};
-      chats.forEach(c => {
-        botCounts[c.id] = (c.messages || []).filter(m => m.role === 'assistant').length;
-      });
-      document.querySelectorAll('.char-row-count[data-char-id]').forEach(countEl => {
-        const count = botCounts[countEl.dataset.charId] || 0;
-        countEl.textContent = count === 0 ? 'No messages yet' : `${count} message${count === 1 ? '' : 's'}`;
-      });
-    }).catch(err => console.error('Unable to load chat counts.', err));
+  const loadCounts = async () => {
+    try {
+      const chats = await dbGetAll('chats');
+      chatCounts = new Map(chats.map(chat => [
+        chat.id, (chat.messages || []).filter(msg => msg.role === 'assistant').length,
+      ]));
+      updateCharacterCounts();
+    } catch (err) {
+      console.error('Unable to load chat counts.', err);
+    }
   };
   if (window.requestIdleCallback) window.requestIdleCallback(loadCounts, { timeout: 1500 });
   else setTimeout(loadCounts, 250);
+}
+
+function characterCountText(charId) {
+  if (!chatCounts) return 'Loading…';
+  const count = chatCounts.get(charId) || 0;
+  return count === 0 ? 'No messages yet' : `${count} message${count === 1 ? '' : 's'}`;
+}
+
+function updateCharacterCounts() {
+  document.querySelectorAll('.char-row-count[data-char-id]').forEach(el => {
+    el.textContent = characterCountText(el.dataset.charId);
+  });
 }
 
 // ── Swipe-to-delete for char rows ─────────────────────────────────────────────
@@ -517,6 +627,7 @@ function snapRow(row, x) {
   row.style.transition = 'transform 0.22s ease';
   row.style.transform  = x ? `translateX(${x}px)` : '';
   _openSwipeRow = x ? row : (_openSwipeRow === row ? null : _openSwipeRow);
+  row.parentElement.querySelector('.char-row-del').tabIndex = x ? 0 : -1;
 }
 
 function addSwipe(wrap, row) {
@@ -535,7 +646,11 @@ function addSwipe(wrap, row) {
     if (!tracking) return;
     dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    if (Math.abs(dy) > Math.abs(dx) + 4) { tracking = false; return; }
+    if (Math.abs(dy) > Math.abs(dx) + 4) {
+      tracking = false;
+      snapRow(row, _openSwipeRow === row ? -SWIPE_REVEAL : 0);
+      return;
+    }
     const clamped = Math.max(-SWIPE_REVEAL, Math.min(0, dx));
     row.style.transform = `translateX(${clamped}px)`;
   }, { passive: true });
@@ -545,29 +660,58 @@ function addSwipe(wrap, row) {
     tracking = false;
     snapRow(row, dx < -SWIPE_REVEAL / 2 ? -SWIPE_REVEAL : 0);
   });
+  wrap.addEventListener('touchcancel', () => {
+    tracking = false;
+    snapRow(row, _openSwipeRow === row ? -SWIPE_REVEAL : 0);
+  });
 }
 
 function openCharSheet() {
   document.getElementById('char-sheet').classList.add('open');
   document.getElementById('char-sheet-backdrop').classList.add('open');
+  document.getElementById('btn-open-chars').setAttribute('aria-expanded', 'true');
+  document.getElementById('btn-close-chars').focus({ preventScroll: true });
 }
-function closeCharSheet() {
+function closeCharSheet({ restoreFocus = true } = {}) {
+  if (!document.getElementById('char-sheet').classList.contains('open')) return;
   if (_openSwipeRow) { snapRow(_openSwipeRow, 0); _openSwipeRow = null; }
   document.getElementById('char-sheet').classList.remove('open');
   document.getElementById('char-sheet-backdrop').classList.remove('open');
+  document.getElementById('btn-open-chars').setAttribute('aria-expanded', 'false');
+  if (restoreFocus && mobileQuery.matches) {
+    document.getElementById('btn-open-chars').focus({ preventScroll: true });
+  }
 }
 
-function renderCharacterGrid(list, botCounts = {}) {
+function placeCharacterSearch() {
+  const tool = document.querySelector('.search-wrap');
+  if (mobileQuery.matches) {
+    document.getElementById('char-sheet-list').before(tool);
+  } else {
+    document.querySelector('.home-toolbar').prepend(tool);
+    closeCharSheet({ restoreFocus: false });
+  }
+}
+
+function renderCharacterGrid() {
+  const query = document.getElementById('search-input').value.trim().toLowerCase();
+  const list = characters.filter(char => char.name.toLowerCase().includes(query));
   const sheetList = document.getElementById('char-sheet-list');
   const cardGrid  = document.getElementById('character-grid');
   const empty     = document.getElementById('empty-state');
 
+  _openSwipeRow = null;
   sheetList.innerHTML = '';
   cardGrid.innerHTML  = '';
 
   if (list.length === 0) {
     cardGrid.classList.remove('is-list');
+    empty.querySelector('p').textContent = query ? 'No matching characters.' : 'No characters yet. Create one to get started.';
     empty.style.display = '';
+    const message = document.createElement('p');
+    message.className = 'char-sheet-empty';
+    message.textContent = empty.querySelector('p').textContent;
+    sheetList.appendChild(message);
     return;
   }
   empty.style.display = 'none';
@@ -581,26 +725,20 @@ function renderCharacterGrid(list, botCounts = {}) {
 
     const avatarEl = document.createElement('div');
     avatarEl.className = 'char-row-avatar';
-    if (char.avatar) {
-      avatarEl.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
-    } else {
-      avatarEl.textContent = initials(char.name);
-    }
+    renderAvatarPreview(avatarEl, char.avatar, char.name);
 
     const infoEl = document.createElement('div');
     infoEl.className = 'char-row-info';
 
-    const nameEl = document.createElement('div');
+    const nameEl = document.createElement('button');
+    nameEl.type = 'button';
     nameEl.className = 'char-row-name';
     nameEl.textContent = char.name;
 
     const countEl = document.createElement('div');
     countEl.className = 'char-row-count';
     countEl.dataset.charId = char.id;
-    const cnt = botCounts[char.id] || 0;
-    countEl.textContent = Object.prototype.hasOwnProperty.call(botCounts, char.id)
-      ? (cnt === 0 ? 'No messages yet' : `${cnt} message${cnt === 1 ? '' : 's'}`)
-      : 'Loading…';
+    countEl.textContent = characterCountText(char.id);
 
     infoEl.appendChild(nameEl);
     infoEl.appendChild(countEl);
@@ -621,24 +759,12 @@ function renderCharacterGrid(list, botCounts = {}) {
 
     const delBtn = document.createElement('button');
     delBtn.className = 'char-row-del';
-    delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Chat</span>`;
-    async function handleDelete(e) {
+    delBtn.tabIndex = -1;
+    delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg><span>Delete Character</span>`;
+    function handleDelete(e) {
       e.stopPropagation();
       e.preventDefault();
-      if (delBtn.dataset.deleting) return;
-      delBtn.dataset.deleting = '1';
-      _openSwipeRow = null;
-      await dbDelete('characters', char.id);
-      await dbDelete('chats', char.id);
-      characters = characters.filter(c => c.id !== char.id);
-      wrap.style.transition = 'max-height 0.25s ease, opacity 0.25s ease';
-      wrap.style.overflow   = 'hidden';
-      wrap.style.maxHeight  = wrap.offsetHeight + 'px';
-      requestAnimationFrame(() => {
-        wrap.style.maxHeight = '0';
-        wrap.style.opacity   = '0';
-      });
-      wrap.addEventListener('transitionend', () => wrap.remove(), { once: true });
+      deleteCharacter(char.id);
     }
     delBtn.addEventListener('click', handleDelete);
     let _delTouchMoved = false;
@@ -658,13 +784,10 @@ function renderCharacterGrid(list, botCounts = {}) {
 
     const cardAvatar = document.createElement('div');
     cardAvatar.className = 'card-avatar';
-    if (char.avatar) {
-      cardAvatar.innerHTML = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}" />`;
-    } else {
-      cardAvatar.textContent = initials(char.name);
-    }
+    renderAvatarPreview(cardAvatar, char.avatar, char.name);
 
-    const cardName = document.createElement('div');
+    const cardName = document.createElement('button');
+    cardName.type = 'button';
     cardName.className = 'card-name';
     cardName.textContent = char.name;
 
@@ -883,7 +1006,7 @@ async function saveCharacter() {
 
   clearCharDraft();
   closeCharModal();
-  renderCharacterGrid(characters);
+  renderCharacterGrid();
 
   if (isNew) {
     openCharProfile(char.id);
@@ -899,23 +1022,38 @@ async function saveCharacter() {
 }
 
 async function deleteCharacter(charId) {
-  const ok = await confirm('Delete this character? Their chat history will also be deleted.');
-  if (!ok) return;
-
-  await dbDelete('characters', charId);
-  await dbDelete('chats', charId);
-  characters = characters.filter(c => c.id !== charId);
-
-  closeCharModal();
-
-  // If we're in this character's chat, go home
-  if (currentChar?.id === charId) {
-    currentChar = null;
-    currentChat = null;
-    showScreen('home-screen');
+  if (deletingCharacterId || busyChat?.id === charId) {
+    toast('Wait for the current chat operation to finish.', 'error');
+    return;
   }
 
-  renderCharacterGrid(characters);
+  const ok = await confirm('Delete this character? Their chat history will also be deleted.');
+  if (!ok || deletingCharacterId || busyChat?.id === charId) return;
+
+  deletingCharacterId = charId;
+  try {
+    await dbWrite(['characters', 'chats'], tx => {
+      tx.objectStore('characters').delete(charId);
+      tx.objectStore('chats').delete(charId);
+    });
+  } catch (err) {
+    toast('Could not delete the character. Please try again.', 'error');
+    return;
+  } finally {
+    deletingCharacterId = null;
+  }
+
+  characters = characters.filter(char => char.id !== charId);
+  chatCounts?.delete(charId);
+  chatDrafts.delete(charId);
+  if (editingCharId === charId) closeCharModal();
+  if (profileCharId === charId) closeCharProfile();
+  if (currentChar?.id === charId) {
+    leaveChat();
+    history.back();
+  }
+
+  renderCharacterGrid();
   toast('Character deleted.', 'success');
 }
 
@@ -927,7 +1065,8 @@ function openCharProfile(charId) {
   if (!char) return;
 
   profileCharId  = charId;
-  chatUsePersona = true; // reset to default on each profile open
+  profileTrigger = document.activeElement;
+  profileUsePersona = true; // reset to default on each profile open
 
   // Avatar
   renderAvatarPreview(document.getElementById('profile-avatar-large'), char.avatar, char.name);
@@ -938,7 +1077,7 @@ function openCharProfile(charId) {
   // Opening message
   const openingEl = document.getElementById('profile-opening');
   if (char.openingMessage) {
-    openingEl.textContent = '"' + fillPlaceholders(char.openingMessage) + '"';
+    openingEl.textContent = '"' + fillPlaceholders(char.openingMessage, char) + '"';
     openingEl.style.display = '';
   } else {
     openingEl.style.display = 'none';
@@ -946,7 +1085,7 @@ function openCharProfile(charId) {
 
   // Personality preview
   const p = char.personality;
-  const pFilled = fillPlaceholders(p);
+  const pFilled = fillPlaceholders(p, char) || '';
   document.getElementById('profile-personality-preview').textContent =
     pFilled.length > 220 ? pFilled.slice(0, 220) + '…' : pFilled;
 
@@ -957,12 +1096,15 @@ function openCharProfile(charId) {
   updatePersonaLabel();
 
   document.getElementById('char-profile-backdrop').classList.add('open');
+  document.getElementById('btn-profile-chat').focus({ preventScroll: true });
 }
 
 function closeCharProfile() {
   document.getElementById('char-profile-backdrop').classList.remove('open');
   document.getElementById('persona-picker').classList.remove('open');
   profileCharId = null;
+  profileTrigger?.focus({ preventScroll: true });
+  profileTrigger = null;
 }
 
 function updatePersonaLabel() {
@@ -971,7 +1113,7 @@ function updatePersonaLabel() {
   const noneBtn = document.getElementById('persona-opt-none');
   const toggleBtn = document.getElementById('btn-toggle-persona');
 
-  if (chatUsePersona) {
+  if (profileUsePersona) {
     const personaName = settings.persona?.name;
     label.textContent = personaName ? `as ${personaName}` : 'using my persona';
     useBtn.classList.add('selected');
@@ -988,13 +1130,15 @@ function updatePersonaLabel() {
 // ─────────────────────────────────────────────
 // AVATAR HELPERS
 // ─────────────────────────────────────────────
-function renderAvatarPreview(el, avatarData, name) {
-  if (avatarData) {
-    el.innerHTML = `<img src="${avatarData}" alt="avatar" />`;
-  } else {
-    el.innerHTML = '';
+function renderAvatarPreview(el, avatarData, name, alt = name || 'Avatar') {
+  if (!avatarData) {
     el.textContent = initials(name);
+    return;
   }
+  const img = document.createElement('img');
+  img.src = avatarData;
+  img.alt = alt;
+  el.replaceChildren(img);
 }
 
 // ─────────────────────────────────────────────
@@ -1029,64 +1173,106 @@ function updateChatBgThumb() {
 // ─────────────────────────────────────────────
 // CHAT — OPEN / LOAD
 // ─────────────────────────────────────────────
-async function openChat(charId, usePersona = true) {
-  closeCharSheet();
-  chatUsePersona = usePersona;
-  currentChar = characters.find(c => c.id === charId);
-  if (!currentChar) return;
-
-  // Load or create chat
-  let chat = await dbGet('chats', charId);
-  if (!chat) {
-    chat = { id: charId, messages: [] };
-    // inject opening message if any
-    if (currentChar.openingMessage) {
-      chat.messages.push({
-        role:      'assistant',
-        content:   currentChar.openingMessage,
-        timestamp: Date.now(),
-      });
-    }
-    await dbPut('chats', chat);
+function leaveChat({ restoreList = false } = {}) {
+  chatNavigation++;
+  const previousId = currentChat?.id;
+  closeSettings();
+  closeEditMessage();
+  closeCharProfile();
+  const input = document.getElementById('message-input');
+  if (currentChat) chatDrafts.set(currentChat.id, input.value);
+  currentChar = null;
+  currentChat = null;
+  sessionStorage.removeItem('activeChat');
+  setupMusicPlayer(null);
+  document.getElementById('messages-container').replaceChildren();
+  showScreen('home-screen');
+  if (restoreList && previousId && mobileQuery.matches) {
+    openCharSheet();
+  } else if (restoreList && previousId) {
+    const card = document.querySelector(`.character-card[data-id="${CSS.escape(previousId)}"] .card-name`);
+    (card || document.getElementById('search-input')).focus({ preventScroll: true });
   }
-  currentChat = chat;
+}
 
+async function openChat(charId, usePersona = true, { fromHistory = false } = {}) {
+  const char = characters.find(candidate => candidate.id === charId);
+  if (!char || deletingCharacterId === charId) {
+    if (fromHistory) {
+      leaveChat();
+      history.replaceState({ screen: 'home' }, '');
+    }
+    return;
+  }
+
+  const navigation = ++chatNavigation;
+  let chat;
+  try {
+    chat = busyChat?.id === charId ? busyChat : await dbGet('chats', charId);
+    if (navigation !== chatNavigation) return;
+    if (!chat) chat = await createChatIfMissing(char);
+  } catch (err) {
+    if (navigation !== chatNavigation) return;
+    toast('Could not open this chat. Please try again.', 'error');
+    if (fromHistory) {
+      leaveChat();
+      history.replaceState({ screen: 'home' }, '');
+    }
+    return;
+  }
+
+  if (navigation !== chatNavigation || !characters.some(candidate => candidate.id === charId)) return;
+  closeSettings();
+  closeCharProfile();
+  closeCharSheet({ restoreFocus: false });
+  const input = document.getElementById('message-input');
+  if (currentChat) chatDrafts.set(currentChat.id, input.value);
+  chatUsePersona = usePersona;
+  currentChar = char;
+  currentChat = chat;
+  chatCounts?.set(chat.id, chat.messages.filter(msg => msg.role === 'assistant').length);
+  updateCharacterCounts();
+
+  if (!fromHistory) history.pushState({ screen: 'chat', charId, usePersona }, '');
+  sessionStorage.removeItem('activeChat');
   updateChatHeader();
   showScreen('chat-screen');
-  sessionStorage.setItem('activeChat', JSON.stringify({ charId, usePersona }));
-  history.pushState({ screen: 'chat' }, '', location.pathname);
+  input.value = chatDrafts.get(charId) || '';
+  resizeTextarea(input);
   renderMessages();
-  scrollToBottom(false);
-  document.getElementById('message-input').focus();
-  setupMusicPlayer(currentChar.spotifyUrl);
+  updateChatControls();
+  scrollToBottom();
+  document.getElementById('btn-back').focus({ preventScroll: true });
+  setupMusicPlayer(char.spotifyUrl);
 }
 
 function toMusicEmbed(url) {
   try {
     const u = new URL(url);
     const h = u.hostname;
+    const onDomain = domain => h === domain || h.endsWith('.' + domain);
     // Spotify
-    if (h.includes('spotify.com')) {
+    if (onDomain('spotify.com')) {
       const path = u.pathname.replace(/^\//, '');
       return { type: 'iframe', src: `https://open.spotify.com/embed/${path}?utm_source=oembed` };
     }
     // Apple Music
-    if (h.includes('music.apple.com')) {
-      const src = url.replace('https://music.apple.com', 'https://embed.music.apple.com');
+    if (h === 'music.apple.com') {
+      const src = `https://embed.music.apple.com${u.pathname}${u.search}`;
       return { type: 'iframe', src };
     }
     // YouTube / YouTube Music
-    if (h.includes('youtube.com') || h.includes('youtu.be') || h.includes('music.youtube.com')) {
+    if (onDomain('youtube.com') || h === 'youtu.be') {
       const vid = u.searchParams.get('v') || u.pathname.split('/').pop();
       if (vid) return { type: 'iframe', src: `https://www.youtube.com/embed/${vid}?autoplay=0` };
     }
     // Deezer
-    if (h.includes('deezer.com')) {
+    if (onDomain('deezer.com')) {
       const parts = u.pathname.split('/').filter(Boolean);
       if (parts.length >= 2) return { type: 'iframe', src: `https://widget.deezer.com/widget/dark/${parts[0]}/${parts[1]}` };
     }
     // Tidal
-    if (h.includes('tidal.com')) {
+    if (onDomain('tidal.com')) {
       return { type: 'iframe', src: `https://embed.tidal.com${u.pathname}` };
     }
     return null;
@@ -1102,18 +1288,19 @@ function setupMusicPlayer(musicUrl) {
   // Reset
   player.style.display     = 'none';
   btn.style.display        = 'none';
-  iframe.src               = '';
+  iframe.removeAttribute('src');
   iframe.style.display     = 'none';
   openLink.style.display   = 'none';
   const old = player.querySelector('audio');
   if (old) old.remove();
 
   if (!musicUrl) return;
+  let url;
+  try { url = new URL(musicUrl); } catch { return; }
+  if (!['http:', 'https:'].includes(url.protocol)) return;
 
-  const embed = toMusicEmbed(musicUrl);
-
-  // Always show the open link
-  openLink.href         = musicUrl;
+  const embed = toMusicEmbed(url.href);
+  openLink.href = url.href;
   openLink.style.display = 'flex';
 
   if (embed?.type === 'iframe') {
@@ -1133,22 +1320,16 @@ function updateChatHeader() {
   const nameEl   = document.getElementById('chat-header-name');
   const avatarEl = document.getElementById('chat-header-avatar');
   nameEl.textContent = currentChar.name;
-  if (currentChar.avatar) {
-    avatarEl.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
-    avatarEl.style.cursor = 'pointer';
-    avatarEl.onclick = () => showAvatarOverlay(currentChar.avatar, currentChar.name);
-  } else {
-    avatarEl.innerHTML = '';
-    avatarEl.textContent = initials(currentChar.name);
-    avatarEl.style.cursor = '';
-    avatarEl.onclick = null;
-  }
+  const { name, avatar } = currentChar;
+  renderAvatarPreview(avatarEl, avatar, name);
+  avatarEl.style.cursor = avatar ? 'pointer' : '';
+  avatarEl.onclick = avatar ? () => showAvatarOverlay(avatar, name) : null;
 }
 
 function showAvatarOverlay(src, name) {
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
-  ov.innerHTML = `<img src="${src}" alt="${escapeHtml(name)}" style="width:260px;height:260px;border-radius:16px;object-fit:cover;box-shadow:0 8px 40px rgba(0,0,0,0.6);" />`;
+  ov.className = 'avatar-overlay';
+  renderAvatarPreview(ov, src, name);
   ov.addEventListener('click', () => ov.remove());
   document.body.appendChild(ov);
 }
@@ -1158,13 +1339,24 @@ function showAvatarOverlay(src, name) {
 // ─────────────────────────────────────────────
 function renderMessages() {
   const container = document.getElementById('messages-container');
-  container.innerHTML = '';
+  const rows = document.createDocumentFragment();
+  currentChat?.messages.forEach((msg, index) => rows.appendChild(createMessageEl(msg, index)));
+  if (busyChat === currentChat && streamingRow) rows.appendChild(streamingRow);
+  container.replaceChildren(rows);
+}
 
-  if (!currentChat) return;
-
-  currentChat.messages.forEach((msg, index) => {
-    container.appendChild(createMessageEl(msg, index));
+function updateMessagePersona() {
+  const container = document.getElementById('messages-container');
+  const follow = isNearChatBottom(container);
+  currentChat.messages.forEach((message, index) => {
+    const row = container.children[index];
+    if (!row) return;
+    renderMessageContent(message.content, row.querySelector('.msg-bubble'));
+    if (message.role === 'user') {
+      renderAvatarPreview(row.querySelector('.msg-avatar'), settings.persona.avatar, settings.persona.name || 'Y', 'You');
+    }
   });
+  if (follow) scrollToBottom();
 }
 
 function createMessageEl(msg, index) {
@@ -1180,19 +1372,13 @@ function createMessageEl(msg, index) {
   const avatar = document.createElement('div');
   avatar.className = 'msg-avatar';
   if (isUser) {
-    const ua = settings.persona?.avatar;
-    if (ua) {
-      avatar.innerHTML = `<img src="${ua}" alt="you" />`;
-    } else {
-      avatar.textContent = initials(settings.persona?.name || 'Y');
-    }
+    renderAvatarPreview(avatar, settings.persona?.avatar, settings.persona?.name || 'Y', 'You');
   } else {
-    if (currentChar?.avatar) {
-      avatar.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
+    const { avatar: image, name } = currentChar;
+    renderAvatarPreview(avatar, image, name);
+    if (image) {
       avatar.style.cursor = 'pointer';
-      avatar.addEventListener('click', () => showAvatarOverlay(currentChar.avatar, currentChar.name));
-    } else {
-      avatar.textContent = initials(currentChar?.name || '?');
+      avatar.addEventListener('click', () => showAvatarOverlay(image, name));
     }
   }
 
@@ -1222,11 +1408,17 @@ function createMessageEl(msg, index) {
     const editBtn = makeActionBtn('Edit', `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`);
     editBtn.addEventListener('click', () => openEditMessage(index));
     actions.appendChild(editBtn);
+    if (isLast) {
+      const retryBtn = makeActionBtn('Retry reply', '', 'msg-response-action');
+      retryBtn.addEventListener('click', retryChatReply);
+      actions.appendChild(retryBtn);
+    }
   }
 
   if (isLastAI) {
     // Regenerate — last AI message only
     const regenBtn = makeActionBtn('Regenerate', `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`);
+    regenBtn.classList.add('msg-response-action');
     regenBtn.addEventListener('click', () => {
       if (regenBtn.dataset.armed) { regenerateLastAI(); return; }
       regenBtn.dataset.armed = '1';
@@ -1256,40 +1448,73 @@ function makeActionBtn(label, iconSvg, extraClass = '') {
   return btn;
 }
 
-function scrollToBottom(smooth = true) {
-  const c = document.getElementById('messages-container');
-  c.scrollTo({ top: c.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+function scrollToBottom() {
+  const container = document.getElementById('messages-container');
+  container.scrollTop = container.scrollHeight;
+}
+
+function isNearChatBottom(container) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight < 80;
 }
 
 // ─────────────────────────────────────────────
 // CHAT — SEND MESSAGE
 // ─────────────────────────────────────────────
+function canRequestChatReply({ showSettings = true } = {}) {
+  if (busyChat || !currentChat || deletingCharacterId === currentChat.id) return false;
+  if (settings.apiKey) return true;
+  toast('Add your API key in Settings first.', 'error');
+  if (showSettings) openSettings();
+  return false;
+}
+
 async function sendMessage() {
-  if (isStreaming) return;
-  const input   = document.getElementById('message-input');
-  const content = input.value.trim();
-  if (!content) return;
+  const input = document.getElementById('message-input');
+  const draft = input.value;
+  const content = draft.trim();
+  if (!content || !canRequestChatReply()) return;
 
-  if (!settings.apiKey) {
-    toast('Add your API key in Settings first.', 'error');
-    openSettings();
-    return;
-  }
-
+  const chat = currentChat;
+  const character = currentChar;
+  const usePersona = chatUsePersona;
+  busyChat = chat;
+  updateChatControls();
   input.value = '';
   resizeTextarea(input);
 
-  // Add user message
   const userMsg = { role: 'user', content, timestamp: Date.now() };
-  currentChat.messages.push(userMsg);
-  await dbPut('chats', currentChat);
+  try {
+    await persistChatMessages(chat, [...chat.messages, userMsg]);
+  } catch (err) {
+    const currentDraft = currentChat === chat ? input.value : chatDrafts.get(chat.id);
+    const restoredDraft = [draft, currentDraft].filter(Boolean).join('\n\n');
+    if (currentChat === chat) {
+      input.value = restoredDraft;
+      resizeTextarea(input);
+    } else {
+      chatDrafts.set(chat.id, restoredDraft);
+    }
+    busyChat = null;
+    updateChatControls();
+    showChatWriteError(err);
+    return;
+  }
 
-  // Render user message
-  const container = document.getElementById('messages-container');
-  container.appendChild(createMessageEl(userMsg, currentChat.messages.length - 1));
-  scrollToBottom();
+  if (currentChat === chat) {
+    const container = document.getElementById('messages-container');
+    container.querySelector('.msg-response-action')?.remove();
+    container.appendChild(createMessageEl(userMsg, chat.messages.length - 1));
+    scrollToBottom();
+  }
 
-  await streamAIResponse();
+  await streamAIResponse(chat, character, usePersona);
+}
+
+function showChatWriteError(err) {
+  const message = err.message?.startsWith('This chat changed')
+    ? err.message
+    : 'Could not save the chat. Please try again.';
+  toast(message, 'error', 6000);
 }
 
 function safeProviderErrorMessage(value, apiKey = '') {
@@ -1319,7 +1544,8 @@ function parseChatStreamLine(line, apiKey) {
     );
     throw new Error(message || 'The AI provider returned an error in its response stream.');
   }
-  return { content: event.choices?.[0]?.delta?.content };
+  const choice = event.choices?.[0];
+  return { content: choice?.delta?.content, finished: !!choice?.finish_reason };
 }
 
 const FIRST_CHAT_CONTENT_TIMEOUT_MS = 60000;
@@ -1370,10 +1596,10 @@ function createChatStreamDeadline(controller) {
 // ─────────────────────────────────────────────
 // CHAT — STREAM AI RESPONSE
 // ─────────────────────────────────────────────
-async function streamAIResponse() {
-  if (isStreaming) return;
-  isStreaming = true;
-  setSendDisabled(true);
+async function streamAIResponse(chat, character, usePersona, historyMessages = chat.messages) {
+  if (!chat || (busyChat && busyChat !== chat)) return;
+  busyChat = chat;
+  updateChatControls();
 
   const container = document.getElementById('messages-container');
 
@@ -1382,11 +1608,7 @@ async function streamAIResponse() {
   typingRow.className = 'message-row char';
   const typingAvatar = document.createElement('div');
   typingAvatar.className = 'msg-avatar';
-  if (currentChar?.avatar) {
-    typingAvatar.innerHTML = `<img src="${currentChar.avatar}" alt="${escapeHtml(currentChar.name)}" />`;
-  } else {
-    typingAvatar.textContent = initials(currentChar?.name || '?');
-  }
+  renderAvatarPreview(typingAvatar, character.avatar, character.name);
   const typingWrap   = document.createElement('div');
   typingWrap.className = 'msg-bubble-wrap';
   const typingBubble = document.createElement('div');
@@ -1395,8 +1617,11 @@ async function streamAIResponse() {
   typingWrap.appendChild(typingBubble);
   typingRow.appendChild(typingAvatar);
   typingRow.appendChild(typingWrap);
-  container.appendChild(typingRow);
-  scrollToBottom();
+  streamingRow = typingRow;
+  if (currentChat === chat) {
+    container.appendChild(typingRow);
+    if (isNearChatBottom(container)) scrollToBottom();
+  }
 
   let previewTimer = null;
   let latestPreview = '';
@@ -1405,360 +1630,241 @@ async function streamAIResponse() {
     if (previewTimer) return;
     previewTimer = setTimeout(() => {
       previewTimer = null;
-      const followOutput = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      const followOutput = currentChat === chat && isNearChatBottom(container);
       typingBubble.classList.remove('typing-bubble');
       typingBubble.textContent = latestPreview;
-      if (followOutput) scrollToBottom(false);
+      if (followOutput) scrollToBottom();
     }, 50);
   };
 
+  const provider = settings.provider || 'deepseek';
+  const model = settings.model || getDefaultModel(provider);
+  const temp = settings.temperature ?? 0.6;
+  const apiKey = settings.apiKey;
+  const maxTokens = provider === 'groq' ? 500 : undefined;
+
+  let saving = false;
   try {
-    const messages = buildAPIMessages();
-    const provider = settings.provider || 'deepseek';
-    const model    = settings.model || getDefaultModel(provider);
-    const temp     = settings.temperature ?? 0.6;
-    // Cap reply length on Groq's tight free tier so output tokens don't blow
-    // the per-minute budget; still long enough for 4-6 paragraphs.
-    const maxTokens = provider === 'groq' ? 500 : undefined;
+    const messages = buildAPIMessages({ messages: historyMessages }, character, usePersona);
+    const body = { model, temperature: temp, stream: true, messages };
+    if (maxTokens) body.max_tokens = maxTokens;
+    const controller = new AbortController();
+    let reader = null;
+    let receivedContent = false;
+    let streamDone = false;
+    const deadline = createChatStreamDeadline(controller);
+    let accumulated = '';
+    try {
+      const response = await Promise.race([fetch(getEndpoint(provider), {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer':  window.location.href,
+          'X-Title':       'Roleplay Chat',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }), deadline.aborted]);
+      if (!response.ok) {
+        const err = await Promise.race([response.json().catch(() => ({})), deadline.aborted]);
+        const providerMessage = safeProviderErrorMessage(err?.error?.message || err?.message, apiKey);
+        const msg = response.status === 429
+          ? 'Rate limited. Wait a moment and try again.'
+          : `HTTP ${response.status}${providerMessage ? ` — ${providerMessage}` : ''}`;
+        const error = new Error(msg);
+        error.status = response.status;
+        error.providerMessage = providerMessage;
+        throw error;
+      }
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';           // holds an incomplete line across chunk reads
 
-    const fetchOnce = async (onText) => {
-      // One request per send. Do NOT auto-retry 429 — that just burns more
-      // of the free-tier quota and keeps the rate-limit window saturated.
-      const body = { model, temperature: temp, stream: true, messages };
-      if (maxTokens) body.max_tokens = maxTokens;
-      const controller = new AbortController();
-      let reader = null;
-      let receivedContent = false;
-      let streamDone = false;
-      const deadline = createChatStreamDeadline(controller);
-      try {
-        const response = await Promise.race([fetch(getEndpoint(), {
-          method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-          'Authorization': `Bearer ${settings.apiKey}`,
-            'HTTP-Referer':  window.location.href,
-            'X-Title':       'Roleplay Chat',
-          },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        }), deadline.aborted]);
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          const providerMessage = safeProviderErrorMessage(err?.error?.message || err?.message, settings.apiKey);
-          const msg = response.status === 429
-            ? 'Rate limited — your free tier caps tokens per minute. Wait ~30-60s, then send again.'
-            : `HTTP ${response.status}${providerMessage ? ` — ${providerMessage}` : ''}`;
-          const error = new Error(msg);
-          error.status = response.status;
-          error.providerMessage = providerMessage;
-          throw error;
-        }
-        reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = '';
-        let buffer = '';           // holds an incomplete line across chunk reads
-
-        const handleLine = (line) => {
-          const event = parseChatStreamLine(line, settings.apiKey);
-          if (!event) return;
-          if (event.done) { streamDone = true; return; }
-          if (event.content) {
-            accumulated += event.content;
-            if (!receivedContent) {
-              receivedContent = true;
-              deadline.receivedFirstContent();
-            }
-            onText(accumulated);
+      const handleLine = (line) => {
+        const event = parseChatStreamLine(line, apiKey);
+        if (!event) return;
+        if (event.done || event.finished) streamDone = true;
+        if (typeof event.content === 'string' && event.content) {
+          accumulated += event.content;
+          if (!receivedContent) {
+            receivedContent = true;
+            deadline.receivedFirstContent();
           }
-        };
-
-        while (!streamDone) {
-          try {
-            const read = reader.read();
-            if (receivedContent) deadline.startIdleTimeout();
-            const result = await Promise.race([read, deadline.aborted]);
-            if (result.done) break;
-            buffer += decoder.decode(result.value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();    // keep the last, possibly-incomplete line
-            for (const line of lines) { handleLine(line); if (streamDone) break; }
-          } finally {
-            deadline.clearIdleTimeout();
-          }
+          queuePreview(accumulated);
         }
-        buffer += decoder.decode();
-        if (buffer) handleLine(buffer); // flush any trailing complete line
-        if (!accumulated) throw new Error('The AI provider ended the response without any reply text.');
-        return accumulated;
-      } finally {
-        deadline.cleanup();
-        if (reader) {
-          if (!streamDone) await reader.cancel().catch(() => {});
-          try { reader.releaseLock(); } catch {}
+      };
+
+      while (!streamDone) {
+        try {
+          const read = reader.read();
+          if (receivedContent) deadline.startIdleTimeout();
+          const result = await Promise.race([read, deadline.aborted]);
+          if (result.done) break;
+          buffer += decoder.decode(result.value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();    // keep the last, possibly-incomplete line
+          for (const line of lines) { handleLine(line); if (streamDone) break; }
+        } finally {
+          deadline.clearIdleTimeout();
         }
       }
-    };
-
-    // Retry loop if AI roleplays as the user. Kept low to avoid burning
-    // free-tier rate limits (each retry is another full request).
-    const MAX_RETRIES = 2;
-    let accumulated = '';
-    let slipped = false;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      accumulated = await fetchOnce(queuePreview);
-      slipped = detectsUserRoleplay(accumulated);
-      if (!slipped) break;
-      if (attempt < MAX_RETRIES) {
-        clearTimeout(previewTimer);
-        previewTimer = null;
-        typingBubble.innerHTML = `<span class="retry-label">AI forgetting ${attempt}/${MAX_RETRIES}</span><span>♥</span><span>♥</span><span>♥</span>`;
-        typingBubble.classList.add('typing-bubble');
+      buffer += decoder.decode();
+      if (buffer && !streamDone) handleLine(buffer); // flush any trailing complete line
+      if (!accumulated.trim()) throw new Error('The AI provider ended the response without any reply text.');
+      if (!streamDone) throw new Error('The AI connection closed before the reply finished. Please retry.');
+    } finally {
+      deadline.cleanup();
+      if (reader) {
+        void reader.cancel().catch(() => {});
+        try { reader.releaseLock(); } catch {}
       }
     }
-    if (slipped) accumulated = scrubUserRoleplay(accumulated);
-    accumulated = scrubYouSlip(accumulated);
-    accumulated = deTagQuestion(accumulated);
 
-    // Remove typing indicator and pop in full response
-    clearTimeout(previewTimer);
-    typingRow.remove();
-    const placeholderMsg = { role: 'assistant', content: accumulated, timestamp: Date.now() };
-    currentChat.messages.push(placeholderMsg);
-    await dbPut('chats', currentChat);
-    const finalRow = createMessageEl(placeholderMsg, currentChat.messages.length - 1);
-    container.appendChild(finalRow);
-    scrollToBottom();
+    const replaceHistory = historyMessages !== chat.messages;
+    const reply = { role: 'assistant', content: accumulated, timestamp: Date.now() };
+    saving = true;
+    await persistChatMessages(chat, [...historyMessages, reply]);
 
-  } catch (err) {
-    console.error('AI response failed', {
-      provider: settings.provider || 'deepseek',
-      model: settings.model || getDefaultModel(settings.provider || 'deepseek'),
-      status: err.status || null,
-      detail: safeProviderErrorMessage(err.providerMessage || err.message, settings.apiKey),
-    });
-    clearTimeout(previewTimer);
-    typingRow.remove();
-    toast(friendlyError(err), 'error', 6000);
-  }
-
-  isStreaming = false;
-  setSendDisabled(false);
-  document.getElementById('message-input').focus();
-}
-
-// ── User-roleplay slip detection ──────────────────────────────────────────────
-function detectsUserRoleplay(text) {
-  const name = (settings.persona?.name || '').trim();
-  const escaped = name ? name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
-  const patterns = [
-    /\*You\s+\w/i,           // *You walk
-    /^You:\s/im,             // You: "hello"
-    /\*You\b/i,              // *You (any)
-    /^You\s+\w+/im,          // You walk... (plain prose, line start)
-  ];
-  if (escaped) {
-    patterns.push(new RegExp(`\\*${escaped}\\s+\\w`, 'i'));
-    patterns.push(new RegExp(`^${escaped}:\\s`, 'im'));
-    patterns.push(new RegExp(`^${escaped}\\s+\\w+`, 'im')); // Name walks... (plain prose)
-    // Name + a speech/action verb ANYWHERE = fabricating the user's turn
-    patterns.push(new RegExp(`\\b${escaped}\\s+(says?|said|asks?|asked|replies|replied|answers?|answered|responds?|responded|whispers?|whispered|mutters?|muttered|shouts?|shouted|nods?|nodded|shakes?\\s+his|shrugs?|shrugged|laughs?|laughed|grins?|grinned)\\b`, 'i'));
-  }
-  return patterns.some(p => p.test(text));
-}
-
-function scrubUserRoleplay(text) {
-  const name = (settings.persona?.name || '').trim();
-  const escaped = name ? name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
-
-  const lines = text.split('\n');
-  const clean = lines.filter(line => {
-    const t = line.trim();
-    if (!t) return true;
-    if (/^\*You\s+\w/i.test(t)) return false;
-    if (/^\*You\b/i.test(t)) return false;
-    if (/^You:\s/i.test(t)) return false;
-    if (/^You\s+\w+/i.test(t)) return false;  // plain prose "You walk..."
-    if (escaped) {
-      if (new RegExp(`^\\*${escaped}\\s+\\w`, 'i').test(t)) return false;
-      if (new RegExp(`^${escaped}:\\s`, 'i').test(t)) return false;
-      if (new RegExp(`^${escaped}\\s+\\w+`, 'i').test(t)) return false; // "Name walks..."
+    if (currentChat === chat) {
+      const followOutput = isNearChatBottom(container);
+      if (replaceHistory) {
+        streamingRow = null;
+        renderMessages();
+      } else {
+        container.querySelector('.msg-response-action')?.remove();
+        typingRow.replaceWith(createMessageEl(reply, chat.messages.length - 1));
+      }
+      if (followOutput) scrollToBottom();
     }
     return true;
-  });
 
-  return clean.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  } catch (err) {
+    if (saving) {
+      showChatWriteError(err);
+      return false;
+    }
+    console.error('AI response failed', {
+      provider,
+      model,
+      status: err.status || null,
+      detail: safeProviderErrorMessage(err.providerMessage || err.message, apiKey),
+    });
+    toast(friendlyError(err), 'error', 6000);
+    return false;
+  } finally {
+    clearTimeout(previewTimer);
+    typingRow.remove();
+    streamingRow = null;
+    busyChat = null;
+    updateChatControls();
+  }
 }
 
-// Turn passive trailing tag-questions into statements:
-// "You're feeling better, aren't you?" -> "You're feeling better."
-// "That's nice, right?" -> "That's nice."
-function deTagQuestion(text) {
-  const tags = "aren't|isn't|wasn't|weren't|don't|doesn't|didn't|won't|wouldn't|can't|couldn't|shouldn't|haven't|hasn't|hadn't|aint|ain't|right|yeah|hm+|huh|no|okay|ok";
-  const pron = "you|they|it|we|he|she|i";
-  // ", <tag> <pronoun>?" optionally followed by closing quote/space
-  const re = new RegExp(`,\\s*(?:${tags})(?:\\s+(?:${pron}))?\\s*\\?(["”'’]?)`, 'gi');
-  return text.replace(re, '.$1');
-}
+function buildAPIMessages(chat, character, usePersona) {
+  const persona = usePersona ? settings.persona : null;
+  const userName = persona?.name || 'User';
+  const resolveNames = text => fillPlaceholders(text, character, userName) || '';
+  let systemContent = [
+    `Write the roleplay as ${character.name}, using the character card for voice, motives, and relationships.`,
+    'Respond to the user’s latest turn and carry forward established events, decisions, and unresolved goals. Let the character take initiative when it fits their motives and circumstances.',
+    'Base the character’s reactions on what they could have observed, learned, or reasonably inferred. Private narration from the user can inform the writing without becoming character knowledge.',
+    'Leave the user’s new dialogue, actions, thoughts, and decisions to them. Use concrete details and let the scene and character’s voice guide the pace and length of the reply.',
+    `Character card:\n${resolveNames(character.personality)}`,
+  ].join('\n\n');
 
-function scrubYouSlip(text) {
-  const name = (settings.persona?.name || '').trim();
-  if (!name) return text;
-  const sub = (s) => s
-    // Contractions (straight and curly apostrophes)
-    .replace(/\byou['’]re\b/gi, `${name} is`)
-    .replace(/\byou['’]ve\b/gi, `${name} has`)
-    .replace(/\byou['’]ll\b/gi, `${name} will`)
-    .replace(/\byou['’]d\b/gi,  `${name} would`)
-    .replace(/\byourself\b/gi,  name)
-    .replace(/\byours\b/gi,     `${name}'s`)
-    .replace(/\byour\b/gi,      `${name}'s`)
-    .replace(/\byou\b/gi,       name);
-
-  // ONLY rewrite inside *asterisk* narration. There, "you/your" is
-  // unambiguously about the user and safe to replace. Plain prose and
-  // dialogue (quoted OR unquoted) are left untouched, because "your" in
-  // speech ("take your time") is correct and scrubbing it mangles the line.
-  return text.replace(/\*([^*]+)\*/g, (m, inner) => `*${sub(inner)}*`);
-}
-
-function buildAPIMessages() {
-  const userName = settings.persona?.name || null;
-  const charName = fillPlaceholders('{{char}}');
-
-  // ── Preamble (read before character card) ──────────────────────
-  let preamble = `You are roleplaying as ${charName}. Stay fully in character at all times.\n\n`;
-  preamble += `ROLEPLAY RULES:\n`;
-  preamble += `1. Only write for ${charName}. NEVER write ${userName || 'the user'}'s dialogue, actions, thoughts, decisions, or movements — not even one line, not even mid-sentence. Do NOT put words in their mouth or continue their turn for them. End your reply where ${charName}'s part ends and let ${userName || 'the user'} respond. This is the most important rule.\n`;
-  if (userName) {
-    preamble += `   WRONG: "${userName} nods and says 'okay, let's go.'" — you wrote the user's line. ✗\n`;
-    preamble += `   WRONG: "${userName} trots back into the room and runs toward me." — you moved the user's character. ✗\n`;
-    preamble += `   RIGHT: React to what ${userName} already did/said, describe only YOUR character + the surroundings, then stop and wait. ✓\n`;
-  }
-  preamble += `2. Keep replies SHORT — usually ONE short paragraph (3-5 sentences), occasionally two if truly needed. Be concise. VARY your sentence structure — do NOT begin sentence after sentence with "I" or "${charName}". Don't narrate every tiny physical motion; pick only the meaningful beats. Cut emotional cliches entirely: no "a sense of X washed over me", no "voice filled with love/reassurance", no "warmth and gentle purrs". Real, varied, economical prose — not a stream of "I did this, I felt that".\n`;
-  preamble += `2b. RESPOND TO THE USER FIRST. Always directly react to what ${userName || 'the user'} just said and did — acknowledge their words, answer their questions, respond to their actions. Never ignore their message or steamroll past it with your own pre-planned story. AFTER reacting, you may naturally nudge the scene forward a little — but the user leads, you respond. Don't railroad. Keep continuity with the situation, and don't abandon an active goal for aimless filler.\n`;
-  if (userName) {
-    preamble += `3. Narration vs dialogue — this is critical:\n`;
-    preamble += `   - NARRATION (descriptive prose): refer to the user with NATURAL PRONOUNS (he/she/they, his/her/their) most of the time, and the name "${userName}" only occasionally for clarity. NEVER use "you/your" in narration. Do NOT repeat "${userName}" in every sentence — that reads robotic.\n`;
-    preamble += `     GOOD: "${userName} shifted closer, his eyes half-closed as his breathing slowed." (name once, then pronouns)\n`;
-    preamble += `     BAD: "${userName}'s eyes closed as ${userName}'s breathing slowed and ${userName} shifted closer." (name spammed — never do this)\n`;
-    preamble += `     BAD: "Your eyes closed as your breathing slowed." (never "you/your" in narration)\n`;
-    preamble += `   - YOUR CHARACTER'S SPOKEN DIALOGUE (what ${charName} says out loud): address them naturally as "you" — e.g. "Do you want it cooked or raw?"\n`;
-  } else {
-    preamble += `3. In narration use the user's name. In your character's spoken dialogue you may say "you" naturally.\n`;
-  }
-  preamble += `4. Use correct grammar, spelling, and punctuation at all times.\n`;
-  preamble += `5. Never assume or invent what the user is doing, feeling, or where they are. React only to what they explicitly write.\n\n`;
-  preamble += `--- CHARACTER CARD ---\n`;
-
-  // ── Character personality ──────────────────────────────────────
-  let systemContent = preamble + fillPlaceholders(currentChar.personality);
-
-  // ── Persona ────────────────────────────────────────────────────
-  if (chatUsePersona && (settings.persona?.name || settings.persona?.description)) {
-    systemContent += '\n\n--- USER INFO ---\n';
-    if (settings.persona.name)        systemContent += `The user's name is ${settings.persona.name}. `;
-    if (settings.persona.description) systemContent += settings.persona.description;
+  if (persona?.name || persona?.description) {
+    const userInfo = [persona.name, persona.description].filter(Boolean).join('\n');
+    systemContent += `\n\nUser persona:\n${userInfo}`;
   }
 
-  // ── OOC ───────────────────────────────────────────────────────
   if (settings.oocEnabled ?? true) {
-    systemContent += `\n\nOUT OF CHARACTER (OOC): When the user writes "[OOC: ...]" or "(OOC: ...)", they are the writer talking to you directly — NOT roleplay. STOP roleplaying. Reply only as the assistant, starting with "[OOC]:", and actually do/answer what they ask. Do NOT narrate, do NOT continue the scene, do NOT stay in character. Just respond to their request plainly. Resume the roleplay only on their next normal (non-OOC) message.`;
+    systemContent += '\n\nTreat [OOC: ...] or (OOC: ...) at the start of a user message or on its own line as a writer’s note. Answer it directly starting with [OOC]: and pause the scene until the next in-character turn.';
   }
 
-  // ── Closing hard rule (last thing the model reads) ────────────
-  if (userName) {
-    systemContent += `\n\n[WRITING RULE] Narration: pronouns (he/she/they) mostly, "${userName}" occasionally, never "you/your". Dialogue: "you" is fine. Don't spam the name.`;
-  } else {
-    systemContent += `\n\n[WRITING RULE] Narration uses the user's name/pronouns, never "you". Dialogue uses "you" naturally.`;
-  }
+  const all = chat.messages;
+  const limit = settings.provider === 'groq' ? 2400 : 12000;
+  // Allow for message framing and use the expanded text when estimating the input.
+  const estimateTokens = content => Math.ceil(content.length / 4) + 4;
+  const historyBudget = limit - estimateTokens(systemContent);
+  const recentHistory = budget => {
+    const recent = [];
+    let remaining = budget;
+    for (let i = all.length - 1; i >= 0; i--) {
+      const content = resolveNames(all[i].content);
+      const cost = estimateTokens(content);
+      // The latest turn is the user's current input, even when it exceeds the estimate.
+      if (recent.length && cost > remaining) break;
+      recent.push({ role: all[i].role, content });
+      remaining -= cost;
+    }
+    return recent.reverse();
+  };
 
-  const messages = [{ role: 'system', content: systemContent }];
-
-  // ── Chat history (recent only) ─────────────────────────────────
-  // Sending the entire history blows past per-request token limits on long
-  // chats. Keep the most recent messages that fit a rough token budget,
-  // estimating ~4 chars/token. Budget leaves headroom for the reply.
-  // Groq's free tier has a tight tokens-per-minute cap, so keep requests
-  // small there (more messages before the limit). Other providers get more.
-  const provider = settings.provider || 'deepseek';
-  // Groq free tier is ~12k tokens/min, so keep its requests small. DeepSeek/
-  // others have generous limits, so give them a big memory window for better
-  // continuity (feels smarter). The opening anchor preserves the core plot.
-  const TOKEN_BUDGET = provider === 'groq' ? 2400 : 12000; // input tokens incl. history
-  const estTokens = s => Math.ceil((s || '').length / 4);
-  const sysTokens = estTokens(systemContent);
-  let budget = Math.max(800, TOKEN_BUDGET - sysTokens);
-
-  const all = currentChat.messages;
-  const kept = [];
-
-  // Always anchor the opening message(s) so the core scenario/plot is never
-  // forgotten, even on long chats with a small context window.
-  const anchorCount = Math.min(2, all.length);
-  const anchors = all.slice(0, anchorCount);
-  const anchorTokens = anchors.reduce((sum, m) => sum + estTokens(m.content), 0);
-  budget -= anchorTokens;
-
-  // Fill remaining budget with the most recent messages (excluding anchors)
-  for (let i = all.length - 1; i >= anchorCount; i--) {
-    const t = estTokens(all[i].content);
-    if (kept.length && budget - t < 0) break;  // always keep at least the latest
-    budget -= t;
-    kept.unshift(all[i]);
-  }
-
-  // Prepend the anchors (with a marker) if there's a gap before the recent run
-  if (anchorCount > 0) {
-    const firstKeptIdx = all.length - kept.length;
-    if (firstKeptIdx > anchorCount) {
-      // there is a gap — keep anchors as scene-setting context
-      kept.unshift(...anchors);
-    } else {
-      // recent run already reaches the start — just use everything from 0
-      for (let i = firstKeptIdx - 1; i >= 0; i--) kept.unshift(all[i]);
+  let recent = recentHistory(historyBudget);
+  const omitted = all.length - recent.length;
+  if (omitted > 0 && historyBudget > 0) {
+    const heading = '\n\nEarlier scene context (some intervening turns were omitted):';
+    const excerpts = all.slice(0, Math.min(omitted, 2)).map(message => {
+      const content = resolveNames(message.content);
+      const excerpt = content.length > 720 ? content.slice(0, 720).trimEnd() + '…' : content;
+      const speaker = message.role === 'assistant' ? character.name : userName;
+      return `\n${speaker}: ${excerpt}`;
+    });
+    const earlier = heading + excerpts.join('');
+    const contextBudget = historyBudget - estimateTokens(earlier);
+    const latestCost = estimateTokens(recent.at(-1).content);
+    if (contextBudget >= latestCost) {
+      systemContent += earlier;
+      recent = recentHistory(contextBudget);
     }
   }
 
-  const oocRe = /[\[(]\s*ooc\s*:/i;
-  kept.forEach((m, i) => {
-    let content = fillPlaceholders(m.content);
-    // Remind the model right before it responds — strongest position in context
-    if (m.role === 'user' && i === kept.length - 1) {
-      if (oocRe.test(m.content)) {
-        // Out-of-character instruction — do not roleplay this turn
-        content += `\n\n[This is an OUT-OF-CHARACTER instruction from the writer. Do NOT roleplay or narrate. Reply only as the assistant starting with "[OOC]:", and actually follow/answer what they ask.]`;
-      } else {
-        const namePart = userName
-          ? ` Do NOT write ${userName}'s dialogue, actions, or responses — stop and let ${userName} reply. In narration use pronouns (he/she/they) mostly + name occasionally, never "you"; in dialogue say "you".`
-          : '';
-        content += `\n\n[Reply: React DIRECTLY to what was just said/done above — don't ignore it or skip ahead. SHORT, 1 paragraph (3-5 sentences). ${charName} responds with real dialogue and action, then nudges the scene only a little. The user leads; you respond. No filler, no repeating.${namePart}]`;
-      }
-    }
-    messages.push({ role: m.role, content });
-  });
-
-  return messages;
+  return [{ role: 'system', content: systemContent }, ...recent];
 }
 
-function setSendDisabled(disabled) {
-  document.getElementById('send-btn').disabled = disabled;
+function updateChatControls() {
+  document.getElementById('send-btn').disabled = !!busyChat;
+  document.getElementById('btn-clear-chat').disabled = !!busyChat;
+  const status = document.getElementById('chat-status');
+  status.textContent = busyChat && busyChat !== currentChat ? 'Reply in progress in another chat' : '';
+  status.hidden = !status.textContent;
+  document.getElementById('messages-container').classList.toggle('chat-busy', !!busyChat);
 }
 
 // ─────────────────────────────────────────────
 // CHAT — MESSAGE ACTIONS
 // ─────────────────────────────────────────────
-async function deleteMessage(index) {
-  const ok = await confirm('Delete this message and all messages after it?');
-  if (!ok) return;
+async function saveChatHistory(chat, messages) {
+  busyChat = chat;
+  updateChatControls();
+  try {
+    await persistChatMessages(chat, messages);
+    if (currentChat === chat) {
+      renderMessages();
+      scrollToBottom();
+    }
+    return true;
+  } catch (err) {
+    showChatWriteError(err);
+    return false;
+  } finally {
+    busyChat = null;
+    updateChatControls();
+  }
+}
 
-  currentChat.messages.splice(index);
-  await dbPut('chats', currentChat);
-  renderMessages();
-  scrollToBottom(false);
+async function deleteMessage(index) {
+  if (busyChat || !currentChat || deletingCharacterId === currentChat.id) return;
+  const chat = currentChat;
+  const ok = await confirm('Delete this message and all messages after it?');
+  if (!ok || busyChat || currentChat !== chat || deletingCharacterId === chat.id) return;
+
+  await saveChatHistory(chat, chat.messages.slice(0, index));
 }
 
 function openEditMessage(index) {
+  if (busyChat || !currentChat) return;
   editMsgIndex = index;
   const msg = currentChat.messages[index];
   document.getElementById('edit-msg-input').value = msg.content;
@@ -1771,59 +1877,45 @@ function closeEditMessage() {
 }
 
 async function saveEditMessage() {
-  if (editMsgIndex === null) return;
-  const newContent = document.getElementById('edit-msg-input').value.trim();
+  if (editMsgIndex === null || !canRequestChatReply({ showSettings: false })) return;
+  const input = document.getElementById('edit-msg-input');
+  const newContent = input.value.trim();
   if (!newContent) { toast('Message cannot be empty.', 'error'); return; }
 
-  // Replace message content and drop everything after it
-  currentChat.messages[editMsgIndex].content   = newContent;
-  currentChat.messages[editMsgIndex].timestamp = Date.now();
-  currentChat.messages.splice(editMsgIndex + 1);
-  await dbPut('chats', currentChat);
-
+  const chat = currentChat;
+  const index = editMsgIndex;
+  const edited = { ...chat.messages[index], content: newContent, timestamp: Date.now() };
+  const historyMessages = [...chat.messages.slice(0, index), edited];
   closeEditMessage();
-  renderMessages();
-  scrollToBottom(false);
 
-  // Re-send to get AI response
-  await streamAIResponse();
+  const saved = await streamAIResponse(chat, currentChar, chatUsePersona, historyMessages);
+  if (!saved && currentChat === chat && editMsgIndex === null &&
+      !document.getElementById('settings-panel').classList.contains('open')) {
+    openEditMessage(index);
+    input.value = newContent;
+  }
 }
 
 async function regenerateLastAI() {
-  if (isStreaming) return;
-  // Remove last AI message and re-stream
-  const msgs = currentChat.messages;
-  if (msgs.length === 0) return;
-  const last = msgs[msgs.length - 1];
-  if (last.role !== 'assistant') return;
+  if (!canRequestChatReply() || currentChat.messages.at(-1)?.role !== 'assistant') return;
+  const historyMessages = currentChat.messages.slice(0, -1);
+  await streamAIResponse(currentChat, currentChar, chatUsePersona, historyMessages);
+}
 
-  msgs.pop();
-  await dbPut('chats', currentChat);
-  renderMessages();
-  scrollToBottom(false);
-
-  await streamAIResponse();
+async function retryChatReply() {
+  if (!canRequestChatReply() || currentChat.messages.at(-1)?.role !== 'user') return;
+  await streamAIResponse(currentChat, currentChar, chatUsePersona);
 }
 
 async function clearChat() {
+  if (busyChat || !currentChat || deletingCharacterId === currentChat.id) return;
+  const chat = currentChat;
   const ok = await confirm('Clear all messages in this chat?');
-  if (!ok) return;
+  if (!ok || busyChat || currentChat !== chat || deletingCharacterId === chat.id) return;
 
-  currentChat.messages = [];
-
-  // Re-add opening message if character has one
-  if (currentChar.openingMessage) {
-    currentChat.messages.push({
-      role:      'assistant',
-      content:   currentChar.openingMessage,
-      timestamp: Date.now(),
-    });
-  }
-
-  await dbPut('chats', currentChat);
-  renderMessages();
-  scrollToBottom(false);
-  toast('Chat cleared.', 'success');
+  const opening = currentChar.openingMessage;
+  const messages = opening ? [{ role: 'assistant', content: opening, timestamp: Date.now() }] : [];
+  if (await saveChatHistory(chat, messages)) toast('Chat cleared.', 'success');
 }
 
 // ─────────────────────────────────────────────
@@ -1877,31 +1969,58 @@ async function exportData() {
   toast('Data exported.', 'success');
 }
 
+function storeBackupRecords({ characters, chats = [], settings: importedSettings }) {
+  const stores = ['characters', 'chats'];
+  if (importedSettings) stores.push('settings');
+  return dbWrite(stores, tx => {
+    const characterStore = tx.objectStore('characters');
+    const chatStore = tx.objectStore('chats');
+    characters.forEach(char => characterStore.put(char));
+    chats.forEach(chat => chatStore.put(chat));
+    if (importedSettings) tx.objectStore('settings').put(importedSettings);
+  });
+}
+
 async function importData(file) {
   try {
-    const text = await file.text();
-    const data = JSON.parse(text);
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data?.characters) || !Array.isArray(data.chats ?? []) ||
+        data.characters.some(char => !char?.id || typeof char.name !== 'string') ||
+        (data.chats ?? []).some(chat => !chat?.id || !Array.isArray(chat.messages) ||
+          chat.messages.some(msg => !['user', 'assistant'].includes(msg?.role) || typeof msg.content !== 'string')) ||
+        (data.settings && data.settings.id !== 'app')) {
+      throw new Error('Invalid backup file.');
+    }
 
-    if (!data.characters || !Array.isArray(data.characters)) throw new Error('Invalid backup file.');
-
-    const ok = await confirm(`Import will overwrite all current data. Continue?`);
+    const ok = await confirm('Import will replace matching characters, chats, and settings from this backup. Continue?');
     if (!ok) return;
+    if (busyChat || deletingCharacterId) {
+      toast('Wait for the current chat operation to finish before importing.', 'error');
+      return;
+    }
 
-    for (const c of data.characters) await dbPut('characters', c);
-    for (const chat of (data.chats || []))    await dbPut('chats', chat);
-    if (data.settings) await dbPut('settings', data.settings);
-    if (Array.isArray(data.hiddenBots))  localStorage.setItem('hidden-discover', JSON.stringify(data.hiddenBots));
-    if (data.discoverState)              localStorage.setItem('discover-state',   JSON.stringify(data.discoverState));
+    if (autoSaveTimer !== null) await saveSettings({ silent: true });
+    await storeBackupRecords({ ...data, chats: data.chats ?? [] });
+    if (data.settings) settings = data.settings;
 
-    // Reload everything
-    settings   = data.settings || {};
-    characters = await dbGetAll('characters');
-    renderCharacterGrid(characters);
+    await loadCharacters();
     populateSettingsForm();
+    if (currentChat) {
+      const settingsOpen = document.getElementById('settings-panel').classList.contains('open');
+      if (settingsOpen) closeSettings();
+      await openChat(currentChat.id, chatUsePersona, { fromHistory: true });
+      if (settingsOpen) openSettings();
+    }
+    try {
+      if (Array.isArray(data.hiddenBots)) localStorage.setItem('hidden-discover', JSON.stringify(data.hiddenBots));
+      if (data.discoverState) localStorage.setItem('discover-state', JSON.stringify(data.discoverState));
+    } catch (err) {
+      toast('Chats and characters imported. Discover preferences could not be saved.', 'error');
+      return;
+    }
     toast('Data imported successfully.', 'success');
-
   } catch (err) {
-    toast('Import failed: ' + friendlyError(err), 'error', 6000);
+    toast('Import failed: ' + (err.message || 'Could not save the backup.'), 'error', 6000);
   }
 }
 
@@ -1912,26 +2031,46 @@ async function migrateAvatars() {
   try {
     const chars = await dbGetAll('characters');
     for (const char of chars) {
-      if (!char.avatar || char.avatar.length <= 40000) continue; // skip if already small
+      if (!char.avatar || char.avatar.length <= 40000) continue;
       const compressed = await compressImageToBase64(char.avatar);
-      if (compressed && compressed.length < char.avatar.length) {
-        await dbPut('characters', { ...char, avatar: compressed });
-      }
+      if (!compressed || compressed.length >= char.avatar.length) continue;
+
+      await dbWrite('characters', tx => {
+        const store = tx.objectStore('characters');
+        const request = store.get(char.id);
+        request.onsuccess = () => {
+          const latest = request.result;
+          if (latest?.avatar === char.avatar) store.put({ ...latest, avatar: compressed });
+        };
+      });
     }
-    // Also compress persona avatar and chat background if oversized
-    const s = await dbGet('settings', 'app');
-    if (!s) return;
-    let changed = false;
-    if (s.persona?.avatar && s.persona.avatar.length > 40000) {
-      const c = await compressImageToBase64(s.persona.avatar);
-      if (c) { s.persona.avatar = c; changed = true; }
-    }
-    if (s.chatBg?.data && s.chatBg.data.length > 40000) {
-      const c = await compressImageToBase64(s.chatBg.data);
-      if (c) { s.chatBg.data = c; changed = true; }
-    }
-    if (changed) await dbPut('settings', s);
-  } catch { /* silent — migration is best-effort */ }
+
+    const saved = await dbGet('settings', 'app');
+    const avatar = saved?.persona?.avatar;
+    const background = saved?.chatBg?.data;
+    const newAvatar = avatar?.length > 40000 ? await compressImageToBase64(avatar) : null;
+    const newBackground = background?.length > 40000 ? await compressImageToBase64(background) : null;
+    if (!newAvatar && !newBackground) return;
+
+    await dbWrite('settings', tx => {
+      const store = tx.objectStore('settings');
+      const request = store.get('app');
+      request.onsuccess = () => {
+        const latest = request.result;
+        if (!latest) return;
+        let changed = false;
+        if (newAvatar && newAvatar.length < avatar.length && latest.persona?.avatar === avatar) {
+          latest.persona.avatar = newAvatar;
+          changed = true;
+        }
+        if (newBackground && newBackground.length < background.length && latest.chatBg?.data === background) {
+          latest.chatBg.data = newBackground;
+          changed = true;
+        }
+        if (changed) store.put(latest);
+      };
+    });
+  } catch { /* migration is best-effort */ }
 }
 
 // ─────────────────────────────────────────────
@@ -2011,8 +2150,7 @@ async function checkRecovery() {
     const when = new Date(snap.savedAt).toLocaleString();
     const ok = await confirm(`Your characters are empty, but a local backup from ${when} was found. Restore it?\n\n(Text is recovered; avatars may need re-adding.)`);
     if (!ok) return;
-    for (const c of (snap.characters || [])) await dbPut('characters', c);
-    for (const ch of (snap.chats || [])) await dbPut('chats', ch);
+    await storeBackupRecords({ characters: snap.characters || [], chats: snap.chats || [] });
     await loadCharacters();
     toast('Recovered from local snapshot. Export a full backup now to be safe.', 'success', 7000);
   } catch {}
@@ -2034,17 +2172,6 @@ async function init() {
   settings = (await dbGet('settings', 'app')) || { id: 'app' };
   if (settings.apiKey) warmupAPIConnection();
 
-  // One-time: lower temperature to 0.6 for tighter, less rambly output.
-  // Only touches the old 0.8 default; leaves any custom value alone.
-  if (!localStorage.getItem('temp-lowered-v1')) {
-    if ((settings.temperature ?? 0.8) >= 0.8) {
-      settings.temperature = 0.6;
-      settings.id = 'app';
-      await dbPut('settings', settings);
-    }
-    localStorage.setItem('temp-lowered-v1', '1');
-  }
-
   await loadCharacters();
   await checkRecovery();
 
@@ -2055,13 +2182,21 @@ async function init() {
   setTimeout(checkStorageHealth, 3000);
   setTimeout(backupReminder, 4500);
 
-  // Restore last chat if the page was refreshed mid-chat
-  const savedChat = (() => { try { return JSON.parse(sessionStorage.getItem('activeChat')); } catch { return null; } })();
-  if (savedChat?.charId && characters.find(c => c.id === savedChat.charId)) {
-    await openChat(savedChat.charId, savedChat.usePersona ?? true);
+  placeCharacterSearch();
+  const savedChat = (() => {
+    try { return JSON.parse(sessionStorage.getItem('activeChat')); } catch { return null; }
+  })();
+  showScreen('home-screen');
+  if (history.state?.screen === 'chat') {
+    const historyChat = history.state.charId ? history.state : savedChat;
+    if (historyChat?.charId && !history.state.charId) {
+      history.replaceState({ ...historyChat, screen: 'chat' }, '');
+    }
+    await openChat(historyChat?.charId, historyChat?.usePersona ?? true, { fromHistory: true });
   } else {
-    showScreen('home-screen');
-    history.replaceState({ screen: 'home' }, '', location.pathname);
+    history.replaceState({ screen: 'home' }, '');
+    if (savedChat?.charId) await openChat(savedChat.charId, savedChat.usePersona ?? true);
+    sessionStorage.removeItem('activeChat');
   }
 
   // ── Settings panel ──────────────────────────
@@ -2071,7 +2206,7 @@ async function init() {
   document.getElementById('btn-save-settings').addEventListener('click', () => saveSettings({ close: true }));
 
   // Auto-save whenever any settings field changes
-  ['api-key', 'persona-name', 'persona-desc', 'custom-model'].forEach(id => {
+  ['api-key', 'vision-key', 'persona-name', 'persona-desc', 'custom-model'].forEach(id => {
     document.getElementById(id).addEventListener('input', scheduleAutoSave);
   });
   document.getElementById('model-select').addEventListener('change', scheduleAutoSave);
@@ -2087,12 +2222,11 @@ async function init() {
     // Stash the key currently in the box under the OLD provider, then load
     // the remembered key for the NEW provider so nothing gets overwritten.
     const keyField = document.getElementById('api-key');
-    const prevProvider = settings.provider || 'deepseek';
-    settings.apiKeys = { ...(settings.apiKeys || {}) };
-    settings.apiKeys[prevProvider] = keyField.value.trim();
-    keyField.value = settings.apiKeys[newProvider] || '';
-    settings.provider = newProvider;
+    formApiKeys[formProvider] = keyField.value.trim();
+    keyField.value = formApiKeys[newProvider] || '';
+    formProvider = newProvider;
     updateProviderUI(newProvider);
+    document.getElementById('custom-model-group').style.display = 'none';
     scheduleAutoSave();
   });
 
@@ -2108,11 +2242,15 @@ async function init() {
   document.getElementById('user-avatar-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const b64 = await compressImageToBase64(file);
-    if (!settings.persona) settings.persona = {};
-    settings.persona.avatar = b64;
-    renderAvatarPreview(document.getElementById('user-avatar-preview'), b64, settings.persona?.name);
     e.target.value = '';
+    const b64 = await compressImageToBase64(file);
+    if (!b64) {
+      toast('Could not read that avatar image.', 'error');
+      return;
+    }
+    formAvatar = b64;
+    renderAvatarPreview(document.getElementById('user-avatar-preview'), b64, settings.persona?.name);
+    scheduleAutoSave();
   });
 
   // Chat background upload
@@ -2288,21 +2426,19 @@ async function init() {
   });
   document.getElementById('btn-profile-chat').addEventListener('click', () => {
     const id         = profileCharId;
-    const usePersona = chatUsePersona;
-    closeCharProfile();
-    openChat(id, usePersona);
+    openChat(id, profileUsePersona);
   });
   document.getElementById('btn-toggle-persona').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('persona-picker').classList.toggle('open');
   });
   document.getElementById('persona-opt-use').addEventListener('click', () => {
-    chatUsePersona = true;
+    profileUsePersona = true;
     updatePersonaLabel();
     document.getElementById('persona-picker').classList.remove('open');
   });
   document.getElementById('persona-opt-none').addEventListener('click', () => {
-    chatUsePersona = false;
+    profileUsePersona = false;
     updatePersonaLabel();
     document.getElementById('persona-picker').classList.remove('open');
   });
@@ -2355,23 +2491,26 @@ async function init() {
   document.getElementById('char-opening').addEventListener('input', saveCharDraft);
 
   // ── Chat screen ──────────────────────────────
-  document.getElementById('btn-back').addEventListener('click', () => {
-    sessionStorage.removeItem('activeChat');
-    showScreen('home-screen');
-    loadCharacters();
-    currentChar = null;
-    currentChat = null;
+  document.getElementById('btn-back').addEventListener('click', () => history.back());
+  document.getElementById('btn-chat-settings').addEventListener('click', openSettings);
+  window.addEventListener('popstate', ({ state }) => {
+    leaveChat({ restoreList: state?.screen === 'home' });
+    if (state?.screen === 'chat') {
+      openChat(state.charId, state.usePersona ?? true, { fromHistory: true });
+    }
   });
 
-  // Browser back button: go home from chat
-  window.addEventListener('popstate', () => {
-    if (document.getElementById('chat-screen').classList.contains('active')) {
-      sessionStorage.removeItem('activeChat');
-      showScreen('home-screen');
-      loadCharacters();
-      currentChar = null;
-      currentChat = null;
-    }
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    const closers = [
+      ['confirm-backdrop', () => document.getElementById('btn-confirm-cancel').click()],
+      ['edit-msg-backdrop', closeEditMessage],
+      ['char-profile-backdrop', closeCharProfile],
+      ['settings-panel', closeSettings],
+      ['char-sheet', closeCharSheet],
+    ];
+    const panel = closers.find(([id]) => document.getElementById(id).classList.contains('open'));
+    if (panel) panel[1]();
   });
 
   document.getElementById('btn-music').addEventListener('click', toggleMusicPlayer);
@@ -2396,11 +2535,7 @@ async function init() {
   });
 
   // ── Search ───────────────────────────────────
-document.getElementById('search-input').addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase();
-    const filtered = characters.filter(c => c.name.toLowerCase().includes(q));
-    renderCharacterGrid(filtered);
-  });
+  document.getElementById('search-input').addEventListener('input', renderCharacterGrid);
 
   // ── Confirm dialog backdrop close ────────────
   document.getElementById('confirm-backdrop').addEventListener('click', (e) => {
@@ -2444,6 +2579,7 @@ document.getElementById('search-input').addEventListener('input', (e) => {
 
   // Re-load discover if screen crosses the mobile/PC boundary (e.g. browser resize, DevTools)
   mobileQuery.addEventListener('change', () => {
+    placeCharacterSearch();
     dailyLoading = false;
     loadDailyDiscovery();
   });
@@ -2571,7 +2707,7 @@ async function applyImportReview() {
   characters.push(char);
 
   closeImportReview();
-  renderCharacterGrid(characters);
+  renderCharacterGrid();
   openCharProfile(char.id);
 }
 
@@ -3004,7 +3140,10 @@ async function loadBrowsePage() {
     renderBrowseGrid(nodes, grid);
     renderBrowsePagination();
   } catch (err) {
-    grid.innerHTML = `<div class="browse-error">Could not reach Chub.ai — ${err.message}<br/><small>If this is a CORS error, the app needs to be served (not opened as file://)</small></div>`;
+    const error = document.createElement('div');
+    error.className = 'browse-error';
+    error.textContent = `Could not reach Chub.ai. ${err.message}`;
+    grid.replaceChildren(error);
   }
 
   browseLoading = false;
@@ -3408,7 +3547,10 @@ async function loadDailyDiscovery() {
     renderDiscoverGrid(nodes, grid);
     renderDiscoverPagination();
   } catch (err) {
-    grid.innerHTML = `<div class="browse-empty">Couldn't load discoveries · ${err.message}</div>`;
+    const error = document.createElement('div');
+    error.className = 'browse-empty';
+    error.textContent = `Couldn't load discoveries. ${err.message}`;
+    grid.replaceChildren(error);
   }
 
   dailyLoading = false;
@@ -3835,24 +3977,20 @@ async function syncJaiDefinitions() {
 
   // Refresh characters list
   characters = await dbGetAll('characters');
-  renderCharacterGrid(characters);
+  renderCharacterGrid();
 }
 
 document.getElementById('btn-sync-jai').addEventListener('click', syncJaiDefinitions);
-
-// Save current chat whenever the tab is hidden or closed
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && currentChat) {
-    dbPut('chats', currentChat);
-  }
-});
 
 // Mobile keyboard — push layout above keyboard when it opens
 if (window.visualViewport) {
   const onViewportChange = () => {
     const vv = window.visualViewport;
-    const keyboardHeight = window.innerHeight - vv.height;
+    const messages = document.getElementById('messages-container');
+    const followOutput = currentChat && isNearChatBottom(messages);
+    const keyboardHeight = vv.scale === 1 ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
     document.documentElement.style.setProperty('--keyboard-h', `${keyboardHeight}px`);
+    if (followOutput && mobileQuery.matches) scrollToBottom();
 
     // Keep the browse modal inside the visible area so its header stays in view
     const backdrop = document.getElementById('browse-backdrop');

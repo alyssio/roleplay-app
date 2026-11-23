@@ -396,6 +396,13 @@ html, body {
   object-fit: cover;
 }
 
+button.card-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
 .card-name {
   font-size: 13px;
   font-weight: 600;
@@ -494,6 +501,14 @@ html, body {
   display: inline-block;
   max-width: 100%;
 }
+button.char-row-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .char-row-name:active { color: var(--accent); }
 .char-row-count {
   font-size: 11px;
@@ -560,10 +575,10 @@ html, body {
 #char-sheet-backdrop.open { display: block; }
 #char-sheet {
   position: fixed;
-  bottom: 0;
+  bottom: var(--keyboard-h, 0px);
   left: 0;
   right: 0;
-  max-height: 82dvh;
+  max-height: min(82dvh, calc(100dvh - var(--keyboard-h, 0px)));
   background: var(--bg-surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   border-top: 1px solid var(--border);
@@ -574,7 +589,10 @@ html, body {
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
 }
+#char-sheet:not(.open) { visibility: hidden; }
 #char-sheet.open { transform: translateY(0); }
+#char-sheet .search-wrap { flex: 0 0 auto; margin: 10px 12px 0; }
+.char-sheet-empty { padding: 14px 8px; color: var(--text-muted); }
 #char-sheet-header {
   display: flex;
   align-items: center;
@@ -594,7 +612,7 @@ html, body {
 }
 
 /* ---- btn-open-chars: only visible on mobile ---- */
-.btn-open-chars { display: none; }
+#btn-open-chars { display: none; }
 
 /* ---- profile back button (hidden on desktop, shown on mobile) ---- */
 .profile-back-btn { display: none; }
@@ -655,6 +673,22 @@ html, body {
   flex-shrink: 0;
 }
 .chat-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+.avatar-overlay img {
+  width: min(260px, 85vw);
+  aspect-ratio: 1;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
 
 .chat-header-name {
   font-size: 15px;
@@ -797,7 +831,14 @@ html, body {
   transition: opacity var(--transition);
   margin: 2px 4px 0;
 }
-.message-row:hover .msg-actions { opacity: 1; }
+.message-row:hover .msg-actions,
+.message-row:focus-within .msg-actions { opacity: 1; }
+.chat-busy .msg-actions { visibility: hidden; }
+#chat-status { color: var(--text-secondary); font-size: 0.8rem; margin: 0 4px 6px; }
+
+@media (hover: none) {
+  .msg-actions { opacity: 1; }
+}
 
 .msg-action-btn {
   background: var(--bg-elevated);
@@ -851,15 +892,6 @@ html, body {
   0%, 60%, 100% { transform: translateY(0); opacity: 1; }
   30%           { transform: translateY(-6px); opacity: 0.8; }
 }
-.retry-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  animation: none;
-  margin-right: 4px;
-  letter-spacing: 0.01em;
-}
-
 /* ---- input area ---- */
 /* ---- dreamy input frame ---- */
 .input-frame {
@@ -882,8 +914,8 @@ html, body {
   pointer-events: none;
   z-index: 3;
 }
-.frame-cloud--bl { bottom: 10px; left: -10px; }
-.frame-cloud--br { bottom: 8px; right: -6px; width: 140px; background: radial-gradient(ellipse at 60% 50%, rgba(180,160,220,0.5), rgba(160,140,200,0.2) 70%, transparent); }
+.frame-cloud--bl { bottom: 10px; left: 0; }
+.frame-cloud--br { bottom: 8px; right: 0; width: 140px; background: radial-gradient(ellipse at 60% 50%, rgba(180,160,220,0.5), rgba(160,140,200,0.2) 70%, transparent); }
 
 /* crescent moon */
 .frame-moon {
@@ -998,6 +1030,7 @@ html, body {
   transition: transform 0.25s ease;
   z-index: 101;
 }
+.settings-panel:not(.open) { visibility: hidden; }
 .settings-panel.open { transform: translateX(0); }
 
 .panel-header {
@@ -1052,6 +1085,7 @@ html, body {
   transition: opacity var(--transition);
   z-index: 200;
 }
+.modal-backdrop:not(.open) { visibility: hidden; }
 .modal-backdrop.open { opacity: 1; pointer-events: all; }
 
 .modal {
@@ -1305,13 +1339,6 @@ input[type="range"] {
 /* Mobile keyboard fix — shift layout above keyboard */
 :root { --keyboard-h: 0px; }
 
-@media (max-width: 600px) {
-  .input-frame {
-    padding-bottom: calc(14px + var(--keyboard-h));
-    transition: padding-bottom 0.15s ease;
-  }
-}
-
 /* Prevent iOS from zooming in on input focus */
 @media (max-width: 600px) {
   input, textarea, select { font-size: 16px !important; }
@@ -1405,12 +1432,20 @@ input[type="range"] {
   .home-header-right  { flex: 1; justify-content: flex-end; }
 
   /* ---- safe area insets for notch / home bar ---- */
-  .input-frame { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .input-frame { padding-bottom: max(calc(14px + var(--keyboard-h)), env(safe-area-inset-bottom)); }
   .home-toolbar { padding-top: max(10px, env(safe-area-inset-top, 10px)); }
 
   /* ---- character grid: hidden on mobile (lives in char-sheet instead) ---- */
   #character-grid, #empty-state { display: none !important; }
-  .btn-open-chars { display: flex; }
+  #btn-open-chars {
+    display: flex;
+    flex: 1;
+    justify-content: flex-start;
+    gap: 8px;
+    width: auto;
+    height: 42px;
+    padding: 0 10px;
+  }
 
   /* ---- character profile: full-page on mobile ---- */
   #char-profile-backdrop { padding: 0; }
@@ -2499,4 +2534,13 @@ input[type="range"] {
   border-radius: var(--radius-md);
   margin: 6px 0;
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen, #char-sheet, .settings-panel, .overlay, .modal-backdrop {
+    transition: none;
+  }
+  .frame-moon, .frame-star, .typing-bubble span {
+    animation: none;
+  }
 }
